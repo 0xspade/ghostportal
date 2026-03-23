@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{{ platform_name }} — Secure Login</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500;600&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  {% if hcaptcha_site_key %}
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+  {% endif %}
+
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary:    #0a0e1a;
+      --bg-panel:      #0d1117;
+      --bg-panel-alt:  #111827;
+      --border:        #1e293b;
+      --border-glow:   #00ff8833;
+      --accent-green:  #00ff88;
+      --accent-cyan:   #00d4ff;
+      --accent-amber:  #ffaa00;
+      --accent-red:    #ff3366;
+      --text-primary:  #e2e8f0;
+      --text-secondary:#94a3b8;
+      --text-muted:    #475569;
+      --font-display:  'Orbitron', monospace;
+      --font-body:     'JetBrains Mono', monospace;
+      --font-ui:       'Exo 2', sans-serif;
+    }
+
+    html, body {
+      height: 100%;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Cyberpunk grid background ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Scan-line overlay ── */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.08) 2px,
+        rgba(0, 0, 0, 0.08) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+      animation: scanlines 8s linear infinite;
+    }
+
+    @keyframes scanlines {
+      0%   { background-position: 0 0; }
+      100% { background-position: 0 100px; }
+    }
+
+    /* ── Layout ── */
+    .page-wrapper {
+      position: relative;
+      z-index: 2;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    /* ── Login card ── */
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2.5rem 2rem;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(0,255,136,0.05),
+        0 4px 24px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+
+    /* Corner accent lines */
+    .login-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 60px; height: 60px;
+      border-top: 2px solid var(--accent-green);
+      border-left: 2px solid var(--accent-green);
+      pointer-events: none;
+    }
+    .login-card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; right: 0;
+      width: 60px; height: 60px;
+      border-bottom: 2px solid var(--accent-cyan);
+      border-right: 2px solid var(--accent-cyan);
+      pointer-events: none;
+    }
+
+    /* ── Logo / Brand ── */
+    .brand {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .brand-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,212,255,0.1));
+      border: 1px solid rgba(0,255,136,0.3);
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      position: relative;
+    }
+
+    .brand-icon svg {
+      width: 28px;
+      height: 28px;
+      fill: var(--accent-green);
+      filter: drop-shadow(0 0 6px var(--accent-green));
+    }
+
+    .brand-name {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent-green);
+      text-shadow:
+        0 0 10px rgba(0,255,136,0.6),
+        0 0 20px rgba(0,255,136,0.3);
+      display: block;
+    }
+
+    .brand-tagline {
+      font-family: var(--font-ui);
+      font-size: 0.7rem;
+      font-weight: 400;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 0.25rem;
+    }
+
+    /* ── Section label ── */
+    .section-label {
+      font-family: var(--font-ui);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent-cyan);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--border), transparent);
+    }
+
+    /* ── Login description ── */
+    .login-desc {
+      font-family: var(--font-ui);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-bottom: 1.75rem;
+      padding: 0.75rem;
+      background: rgba(0,212,255,0.04);
+      border-left: 2px solid var(--accent-cyan);
+      border-radius: 0 2px 2px 0;
+      line-height: 1.5;
+    }
+
+    .login-desc strong {
+      color: var(--accent-cyan);
+      font-weight: 500;
+    }
+
+    /* ── Form ── */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    label {
+      display: block;
+      font-family: var(--font-ui);
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+      margin-bottom: 0.4rem;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      pointer-events: none;
+    }
+
+    input[type="email"] {
+      width: 100%;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      padding: 0.65rem 0.75rem 0.65rem 2.2rem;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="email"]::placeholder {
+      color: var(--text-muted);
+    }
+
+    input[type="email"]:focus {
+      border-color: var(--accent-green);
+      box-shadow: 0 0 0 2px rgba(0,255,136,0.1), 0 0 8px rgba(0,255,136,0.15);
+    }
+
+    /* ── hCaptcha wrapper ── */
+    .captcha-wrapper {
+      margin-bottom: 1.25rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .captcha-placeholder {
+      width: 100%;
+      height: 78px;
+      border: 1px dashed var(--border);
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-ui);
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* ── Submit button ── */
+    .btn-submit {
+      width: 100%;
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      border: 1px solid var(--accent-green);
+      border-radius: 2px;
+      color: var(--accent-green);
+      font-family: var(--font-display);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.2s;
+      outline: none;
+    }
+
+    .btn-submit::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--accent-green);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .btn-submit:hover {
+      box-shadow: 0 0 16px rgba(0,255,136,0.35), 0 0 32px rgba(0,255,136,0.15);
+      text-shadow: 0 0 8px rgba(0,255,136,0.8);
+    }
+
+    .btn-submit:hover::before {
+      opacity: 0.06;
+    }
+
+    .btn-submit:active {
+      transform: scale(0.99);
+    }
+
+    .btn-submit span {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Flash messages ── */
+    .flash-messages {
+      margin-bottom: 1.25rem;
+    }
+
+    .flash {
+      padding: 0.6rem 0.75rem;
+      border-radius: 2px;
+      font-family: var(--font-ui);
+      font-size: 0.78rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .flash.error {
+      background: rgba(255,51,102,0.08);
+      border: 1px solid rgba(255,51,102,0.3);
+      color: #ff6688;
+    }
+
+    .flash.info {
+      background: rgba(0,212,255,0.06);
+      border: 1px solid rgba(0,212,255,0.25);
+      color: var(--accent-cyan);
+    }
+
+    .flash-icon { flex-shrink: 0; margin-top: 0.05rem; }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border), transparent);
+      margin: 1.5rem 0;
+    }
+
+    /* ── Info blurb ── */
+    .info-blurb {
+      font-family: var(--font-ui);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .info-blurb .badge {
+      display: inline-block;
+      padding: 0.15rem 0.45rem;
+      background: rgba(0,255,136,0.07);
+      border: 1px solid rgba(0,255,136,0.2);
+      border-radius: 2px;
+      color: var(--accent-green);
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin: 0 0.1rem;
+    }
+
+    /* ── Footer ── */
+    .page-footer {
+      margin-top: 1.5rem;
+      text-align: center;
+      font-family: var(--font-ui);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    .page-footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .page-footer a:hover {
+      color: var(--accent-cyan);
+    }
+
+    .page-footer .sep {
+      margin: 0 0.4rem;
+      opacity: 0.4;
+    }
+
+    /* ── Honeypot (visually hidden, accessible) ── */
+    .hp-field {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+      tab-index: -1;
+    }
+
+    /* ── Pulse animation for brand icon ── */
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 8px rgba(0,255,136,0.2); }
+      50%       { box-shadow: 0 0 20px rgba(0,255,136,0.5), 0 0 40px rgba(0,255,136,0.2); }
+    }
+
+    .brand-icon {
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+
+    /* ── Status indicator ── */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 1.5rem;
+      font-family: var(--font-ui);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 6px var(--accent-green);
+      flex-shrink: 0;
+      animation: blink 2s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-wrapper">
+  <div class="login-card">
+
+    <!-- Brand -->
+    <div class="brand">
+      <div class="brand-icon">
+        <!-- Hexagon ghost icon -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L20 8.5v7l-8 4-8-4v-7l8-4.32zM12 7a3 3 0 100 6 3 3 0 000-6zm0 8c-2.67 0-8 1.34-8 4v1h16v-1c0-2.66-5.33-4-8-4z"/>
+        </svg>
+      </div>
+      <span class="brand-name">{{ platform_name }}</span>
+      <span class="brand-tagline">Secure Vulnerability Disclosure</span>
+    </div>
+
+    <!-- System status -->
+    <div class="status-row">
+      <div class="status-dot"></div>
+      <span>SYSTEM ONLINE &mdash; PASSWORDLESS AUTH ACTIVE</span>
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">
+              <span class="flash-icon">
+                {% if category == 'error' %}&#9888;{% else %}&#9432;{% endif %}
+              </span>
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Description -->
+    <div class="login-desc">
+      <strong>Passwordless login.</strong>
+      Enter your email address and we will send you a secure
+      <strong>magic link</strong> containing a one-time verification code.
+      No password required &mdash; ever.
+    </div>
+
+    <!-- Login form -->
+    <form method="POST" action="{{ url_for('auth.login') }}" novalidate>
+      {{ csrf_token() if csrf_token is defined else '' }}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <!-- Honeypot field (hidden from real users, filled by bots) -->
+      <div class="hp-field" aria-hidden="true">
+        <input type="text" name="website" tabindex="-1" autocomplete="off" value="">
+      </div>
+
+      <div class="section-label">Access Credentials</div>
+
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <div class="input-wrapper">
+          <span class="input-icon" aria-hidden="true">&#9993;</span>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="researcher@yourdomain.com"
+            autocomplete="email"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            required
+            maxlength="254"
+            aria-label="Email address for magic link login"
+          >
+        </div>
+      </div>
+
+      <!-- hCaptcha -->
+      <div class="captcha-wrapper">
+        {% if hcaptcha_site_key %}
+          <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}" data-theme="dark"></div>
+        {% else %}
+          <div class="captcha-placeholder">
+            &#9632; hCaptcha (configure HCAPTCHA_SITE_KEY)
+          </div>
+        {% endif %}
+      </div>
+
+      <button type="submit" class="btn-submit">
+        <span>&#9654; Send Magic Link</span>
+      </button>
+    </form>
+
+    <div class="divider"></div>
+
+    <!-- Passwordless explanation -->
+    <div class="info-blurb">
+      A secure link containing a <span class="badge">20-char code</span> will be sent to your inbox.
+      Click the link, enter the code &mdash; access granted.
+      No passwords stored. No password reset. Ever.
+    </div>
+
+  </div><!-- /.login-card -->
+
+  <!-- Footer -->
+  <footer class="page-footer">
+    <a href="{{ url_for('legal.terms') }}">Terms of Service</a>
+    <span class="sep">&middot;</span>
+    <a href="{{ url_for('legal.privacy') }}">Privacy Policy</a>
+    <span class="sep">&middot;</span>
+    <span>{{ platform_name }} &copy; 2026</span>
+  </footer>
+
+</div><!-- /.page-wrapper -->
+
+</body>
+</html>

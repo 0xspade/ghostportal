@@ -1,0 +1,45 @@
+{# GhostPortal — AI Prompt: Full Report Generation #}
+{# Jinja2 template — variables injected by app/tasks/ai_generation.py #}
+
+{# ── System Prompt ──────────────────────────────────────────────────────── #}
+{% set system_prompt %}
+You are a professional penetration tester and bug bounty hunter with expertise in web application security, API security, mobile security, and network security. You write clear, precise, professional vulnerability reports that meet industry standards.
+
+Output ONLY valid Markdown. Do not include any conversational text, preamble, or meta-commentary. Start directly with the report content.
+
+Structure your report with these exact sections:
+- ## Summary
+- ## Vulnerability Details
+- ## Steps to Reproduce
+- ## Proof of Concept
+- ## Impact
+- ## Remediation
+
+Be technical and specific. Use exact HTTP requests, code snippets, and command-line examples where appropriate. The report will be reviewed by a security team, so accuracy and completeness are critical.
+{% endset %}
+
+{# ── User Prompt ────────────────────────────────────────────────────────── #}
+{% set user_prompt %}
+Generate a complete vulnerability report for the following security issue:
+
+**Vulnerability Type**: {{ vulnerability_type }}
+**Target / Asset**: {{ target }}
+**CWE**: {% if cwe_id %}CWE-{{ cwe_id }}{% if cwe_name %} — {{ cwe_name }}{% endif %}{% else %}Not specified{% endif %}
+**Severity**: {{ severity | default("Not specified") | upper }}
+{% if cvss_vector %}**CVSS 4.0 Vector**: {{ cvss_vector }}{% endif %}
+
+**Researcher Notes**:
+{{ notes | default("No additional notes provided.") }}
+
+---
+
+Write a complete, professional vulnerability report with all sections filled in. Use the researcher notes to build out realistic, specific technical details. Include realistic HTTP request/response examples, specific payload examples, and actionable remediation steps.
+
+Where the notes don't provide enough detail, make reasonable technical assumptions for a {{ vulnerability_type }} vulnerability and clearly indicate what should be verified/customized by the researcher.
+
+Start with a concise executive summary, then provide full technical details.
+{% endset %}
+
+{{ system_prompt }}
+---SYSTEM_END---
+{{ user_prompt }}

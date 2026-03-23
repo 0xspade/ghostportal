@@ -1,0 +1,12 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Bounty Set — {{ report.display_id }}: {{ amount }} {{ currency }}{% endblock %}
+{% block body %}
+<h2>Bounty Amount Set</h2>
+<p>A bounty has been set for vulnerability report <strong>{{ report.display_id }}</strong>.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Report</span><span class="meta-val">{{ report.display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">Amount</span><span class="meta-val" style="color:#00ff88;">{{ amount }} {{ currency }}</span></div>
+  <div class="meta-row"><span class="meta-key">Set by</span><span class="meta-val">{{ company_name or 'Security Team' }}</span></div>
+</div>
+<a href="{{ dashboard_url }}" class="btn-cta">VIEW REPORT →</a>
+{% endblock %}

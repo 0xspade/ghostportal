@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>400 — Bad Request</title>
+  <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+</head>
+<body>
+<div id="app" class="app app-full-height app-without-header">
+  <div class="error-page">
+    <div class="error-page-content text-center">
+      <div class="error-code text-theme">400</div>
+      <h2 class="fw-bold mb-2">BAD REQUEST</h2>
+      <p class="text-inverse text-opacity-50 mb-4">Your request could not be processed.</p>
+      <a href="javascript:history.back()" class="btn btn-outline-theme">
+        <i class="bi bi-arrow-left me-2"></i>Go Back
+      </a>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='hud/js/vendor.min.js') }}"></script>
+<script src="{{ url_for('static', filename='hud/js/app.min.js') }}"></script>
+</body>
+</html>

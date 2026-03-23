@@ -1,0 +1,975 @@
+{% extends "base.html" %}
+{% block title %}{{ report.display_id }} — {{ report.title|truncate(50) }} — {{ platform_name }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+      integrity="sha512-rO+olRTkcf304NScNlDu/PN6SzMkVHa8LmrWfUNDnC2w5k/ylEv7nR02/A32Yv+a7sB6/JVvuPLb+bTTv7LA=="
+      crossorigin="anonymous">
+<style>
+/* Markdown rendered content */
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+}
+.markdown-content p:last-child { margin-bottom: 0; }
+.markdown-content pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+{% endblock %}
+{% block content %}
+
+{% set _concluded = report.status in ['resolved','duplicate','informative','wont_fix','not_applicable'] %}
+{% set _old_enough = report.created_at and ((now - report.created_at).days >= 90) %}
+{% set _deletable = _old_enough or _concluded %}
+{% set sev_class = {'critical':'danger','high':'warning','medium':'primary','low':'info','informational':'secondary'}.get(report.severity,'secondary') %}
+{% set sev_text_class = 'text-dark' if report.severity in ('high',) else '' %}
+
+{# ── Top nav bar (matches portal style) ── #}
+<div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('reports.list_reports') }}" class="btn btn-sm btn-light">
+      <i class="bi bi-arrow-left me-1"></i>Reports
+    </a>
+    <code class="text-theme small px-2 py-1 bg-inverse bg-opacity-5 rounded">{{ report.display_id }}</code>
+    {% if report.program_name %}
+    <span class="text-inverse text-opacity-50 small d-none d-sm-inline">{{ report.program_name }}</span>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2 flex-shrink-0">
+    <div class="dropdown">
+      <button class="btn btn-sm btn-outline-theme dropdown-toggle" data-bs-toggle="dropdown">
+        <i class="bi bi-download me-1"></i>Export
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a href="{{ url_for('reports.export_pdf', report_uuid=report.id) }}" class="dropdown-item"><i class="bi bi-file-pdf me-2"></i>PDF</a></li>
+        <li><a href="{{ url_for('reports.export_json', report_uuid=report.id) }}" class="dropdown-item"><i class="bi bi-filetype-json me-2"></i>JSON</a></li>
+        <li><a href="{{ url_for('reports.export_markdown', report_uuid=report.id) }}" class="dropdown-item"><i class="bi bi-markdown me-2"></i>Markdown</a></li>
+      </ul>
+    </div>
+    <a href="{{ url_for('reports.edit_report', report_uuid=report.id) }}" class="btn btn-sm btn-outline-theme">
+      <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    {% if _deletable %}
+    <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteReportModal">
+      <i class="bi bi-trash"></i>
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Delete modal ── #}
+{% if _deletable %}
+<div class="modal fade" id="deleteReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-danger">
+        <h5 class="modal-title fw-bold text-danger"><i class="bi bi-trash me-2"></i>Delete Report</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to permanently delete <strong>{{ report.display_id }}</strong>?</p>
+        <p class="text-inverse text-opacity-50 small mb-0">This will delete the report, all replies, attachments, and invite records. This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <form method="POST" action="{{ url_for('reports.delete_report', report_uuid=report.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-danger"><i class="bi bi-trash me-1"></i>Delete Permanently</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Pending field edits alert ── #}
+{% if pending_edits %}
+<div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  <strong>{{ pending_edits|length }} pending field edit proposal{{ 's' if pending_edits|length != 1 }} from security team</strong>
+  — <a href="#field-edits-section" class="alert-link">Review below</a>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{# ── Two-column layout ── #}
+<div class="row g-3 mb-3">
+
+  {# ════ LEFT COLUMN — Report Content ════ #}
+  <div class="col-lg-8">
+
+    {# ── Report Header Card ── #}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        {# Title row #}
+        <div class="d-flex align-items-start gap-2 mb-3">
+          <span class="badge bg-{{ sev_class }} {{ sev_text_class }} flex-shrink-0 mt-1">
+            {{ report.severity|upper if report.severity else 'UNRATED' }}
+          </span>
+          <h1 class="fw-bold mb-0 flex-1" style="font-size:1.3rem;line-height:1.4;">{{ report.title }}</h1>
+        </div>
+        {# Meta grid #}
+        <div class="row g-2 small">
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Status</div>
+            {% set s = report.status %}
+            {% if s == 'draft' %}<span class="badge bg-secondary">DRAFT</span>
+            {% elif s == 'submitted' %}<span class="badge bg-primary">SUBMITTED</span>
+            {% elif s == 'triaged' %}<span class="badge bg-warning text-dark">TRIAGED</span>
+            {% elif s == 'duplicate' %}<span class="badge bg-secondary">DUPLICATE</span>
+            {% elif s == 'informative' %}<span class="badge bg-info">INFORMATIVE</span>
+            {% elif s == 'resolved' %}<span class="badge bg-theme">RESOLVED</span>
+            {% elif s == 'wont_fix' %}<span class="badge bg-danger">WON'T FIX</span>
+            {% elif s == 'not_applicable' %}<span class="badge bg-secondary">NOT APPLICABLE</span>
+            {% else %}<span class="badge bg-secondary">{{ s|upper }}</span>{% endif %}
+          </div>
+          {% if report.cvss_score or report.cvss_vector %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">CVSS 4.0</div>
+            {% if report.cvss_score %}
+            <span class="fw-bold {% if report.cvss_score >= 9.0 %}text-danger{% elif report.cvss_score >= 7.0 %}text-warning{% elif report.cvss_score >= 4.0 %}text-primary{% else %}text-info{% endif %}">
+              {{ '%.1f'|format(report.cvss_score) }}
+            </span>
+            {% endif %}
+            {% if report.cvss_vector %}
+            <code class="text-inverse text-opacity-50 small ms-1" title="{{ report.cvss_vector }}">{{ report.cvss_vector|truncate(30) }}</code>
+            {% endif %}
+          </div>
+          {% endif %}
+          {% if report.cwe_id %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">CWE</div>
+            <span class="small">CWE-{{ report.cwe_id }}{% if report.cwe_name %}: {{ report.cwe_name }}{% endif %}</span>
+          </div>
+          {% endif %}
+          {% if report.program_name %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Program</div>
+            <span class="small fw-bold">{{ report.program_name }}</span>
+          </div>
+          {% endif %}
+          {% if report.target_asset %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Target</div>
+            <code class="small">{{ report.target_asset }}</code>
+          </div>
+          {% endif %}
+          {% if report.bounty_amount %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Bounty</div>
+            <span class="fw-bold text-theme">{{ report.bounty_amount }} {{ report.bounty_currency }}</span>
+            {% if report.bounty_paid_at %}
+            <span class="badge bg-theme ms-1">RECEIVED</span>
+            {% else %}
+            <span class="badge bg-warning text-dark ms-1">PENDING</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {# Tags #}
+        {% if report.tags %}
+        <div class="mt-3 d-flex flex-wrap gap-1">
+          {% for tag in report.tags %}
+          <span class="badge bg-inverse bg-opacity-25 text-inverse border border-theme border-opacity-25">{{ tag }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Lifecycle Timeline ── #}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-diagram-3 me-2 text-theme"></i>Lifecycle Timeline
+      </div>
+      <div class="card-body">
+        {% set terminal = ['duplicate','informative','wont_fix','not_applicable'] %}
+        {% if report.status in terminal %}
+          {% set steps = [
+            ('draft', 'Draft', report.created_at),
+            ('submitted', 'Submitted', report.submitted_at),
+            (report.status, report.status|replace('_',' ')|title, None),
+          ] %}
+        {% else %}
+          {% set steps = [
+            ('draft', 'Draft', report.created_at),
+            ('submitted', 'Submitted', report.submitted_at),
+            ('triaged', 'Triaged', None),
+            ('resolved', 'Resolved', None),
+          ] %}
+        {% endif %}
+        {% set step_statuses = steps | map(attribute=0) | list %}
+        {% set current_step_idx = step_statuses.index(report.status) if report.status in step_statuses else -1 %}
+        <div class="d-flex gap-4 align-items-start overflow-auto pb-2">
+          {% for step_status, step_label, step_ts in steps %}
+          {% set loop_idx = loop.index0 %}
+          {% set is_completed = current_step_idx > loop_idx %}
+          {% set is_current = current_step_idx == loop_idx %}
+          <div class="text-center flex-shrink-0" style="min-width:70px;">
+            <div class="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-2
+              {% if is_completed %}bg-theme{% elif is_current %}bg-warning{% else %}bg-inverse bg-opacity-10{% endif %}"
+              style="width:36px;height:36px;">
+              {% if is_completed %}<i class="bi bi-check text-dark fw-bold"></i>
+              {% elif is_current %}<i class="bi bi-circle-fill text-dark" style="font-size:8px;"></i>
+              {% else %}<i class="bi bi-circle text-inverse text-opacity-25" style="font-size:8px;"></i>{% endif %}
+            </div>
+            <div class="small fw-bold {% if is_completed %}text-theme{% elif is_current %}text-warning{% else %}text-inverse text-opacity-25{% endif %}">
+              {{ step_label }}
+            </div>
+            {% if step_ts %}
+            <div class="text-inverse text-opacity-50" style="font-size:0.7rem;">{{ step_ts.strftime('%Y-%m-%d') }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Report body sections macro ── #}
+    {% macro md_section(title, content, icon) %}
+    {% if content %}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-{{ icon }} me-2 text-theme"></i>{{ title }}
+      </div>
+      <div class="card-body">
+        <div class="markdown-content">{{ content|safe }}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% endmacro %}
+
+    {{ md_section('Description', rendered.description, 'text-paragraph') }}
+    {{ md_section('Steps to Reproduce', rendered.steps_to_reproduce, 'list-ol') }}
+    {{ md_section('Proof of Concept', rendered.proof_of_concept, 'code-slash') }}
+    {{ md_section('Impact Statement', rendered.impact_statement, 'exclamation-diamond') }}
+    {{ md_section('Technical Details', rendered.technical_details, 'cpu') }}
+    {{ md_section('Remediation', rendered.remediation, 'wrench') }}
+
+    {# ── Internal Notes (owner only) ── #}
+    {% if report.replies %}
+    {% set internal_notes = report.replies|selectattr('is_internal','equalto',True)|list %}
+    {% if internal_notes %}
+    <div class="card mb-3 border-warning border-opacity-50">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold text-warning">
+        <i class="bi bi-lock me-2"></i>Internal Notes <span class="badge bg-warning text-dark ms-2">Owner Only</span>
+      </div>
+      <div class="card-body">
+        {% for note in internal_notes %}
+        <div class="mb-3 pb-3 {% if not loop.last %}border-bottom border-inverse border-opacity-10{% endif %}">
+          <div class="text-inverse text-opacity-50 small mb-2">{{ note.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+          <div class="markdown-content">{{ note.body|markdown }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {# ── Field Edit Proposals (owner review) ── #}
+    {% if pending_edits %}
+    <div class="card mb-3" id="field-edits-section">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold text-warning">
+        <i class="bi bi-pencil-square me-2"></i>Field Edit Proposals
+        <span class="badge bg-warning text-dark ms-2">{{ pending_edits|length }}</span>
+      </div>
+      <div class="card-body">
+        {% for edit in pending_edits %}
+        <div class="card bg-inverse bg-opacity-5 border-0 mb-3">
+          <div class="card-body">
+            <div class="text-inverse text-opacity-50 small mb-2">
+              Proposed by <strong>{{ edit.invite.company_name if edit.invite else 'Security Team' }}</strong>
+              on {{ edit.created_at.strftime('%Y-%m-%d') }}
+            </div>
+            <div class="mb-2 small">Field: <code class="text-theme">{{ edit.field_name }}</code></div>
+            <div class="row g-2 mb-2">
+              <div class="col-md-6">
+                <div class="text-inverse text-opacity-50 small mb-1">Current</div>
+                <code class="small">{{ edit.old_value }}</code>
+              </div>
+              <div class="col-md-6">
+                <div class="text-theme small mb-1">Proposed</div>
+                <code class="small text-theme">{{ edit.proposed_value }}</code>
+              </div>
+            </div>
+            <div class="text-inverse text-opacity-75 small mb-3"><strong>Reason:</strong> {{ edit.reason }}</div>
+            <div class="d-flex gap-2">
+              <form method="POST" action="{{ url_for('reports.accept_field_edit', report_uuid=report.id, edit_uuid=edit.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-theme btn-sm"><i class="bi bi-check me-1"></i>Accept</button>
+              </form>
+              <form method="POST" action="{{ url_for('reports.reject_field_edit', report_uuid=report.id, edit_uuid=edit.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-danger btn-sm"><i class="bi bi-x me-1"></i>Reject</button>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>{# end left column #}
+
+  {# ════ RIGHT COLUMN — Owner Actions & Panels ════ #}
+  <div class="col-lg-4 d-flex flex-column" style="min-height:0;">
+
+    {# ── Attachments ── #}
+    {% if attachments %}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-paperclip me-2 text-theme"></i>Attachments
+        <span class="badge bg-secondary ms-1">{{ attachments|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        {# Image gallery #}
+        {% set images = attachments | selectattr('mime_type','match','^image/') | list %}
+        {% if images %}
+        <div class="d-flex flex-wrap gap-2 mb-2 p-1">
+          {% for att in images %}
+          <a href="{{ url_for('serve_attachment', attachment_uuid=att.id) }}"
+             target="_blank" rel="noopener noreferrer" title="{{ att.filename_original }}">
+            <img src="{{ url_for('serve_attachment', attachment_uuid=att.id) }}"
+                 class="rounded border border-inverse border-opacity-10"
+                 style="width:80px;height:80px;object-fit:cover;cursor:pointer;"
+                 alt="{{ att.filename_original }}"
+                 onerror="this.parentElement.style.display='none'">
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {# File list #}
+        <div class="d-flex flex-column gap-1">
+          {% for att in attachments %}
+          {% set is_image = att.mime_type and att.mime_type.startswith('image/') %}
+          <div class="d-flex align-items-center gap-2 px-2 py-1 rounded bg-inverse bg-opacity-5">
+            <i class="bi bi-{% if is_image %}image{% elif 'pdf' in att.mime_type %}file-pdf{% elif 'video' in att.mime_type %}camera-video{% else %}file-earmark{% endif %} text-theme flex-shrink-0"></i>
+            <span class="small text-inverse flex-1 text-truncate" title="{{ att.filename_original }}" style="max-width:120px;">{{ att.filename_original }}</span>
+            <span class="text-inverse text-opacity-50" style="font-size:0.65rem;white-space:nowrap;">{{ (att.file_size / 1024)|round(1) }}KB</span>
+            <div class="d-flex gap-1 flex-shrink-0">
+              <button class="btn btn-link btn-sm p-0 text-inverse text-opacity-50"
+                      title="Copy markdown reference"
+                      onclick="ownerCopyRef(this, '{{ att.filename_original | replace("'", "\\'") }}', '{{ url_for('serve_attachment', attachment_uuid=att.id) }}', {{ 'true' if is_image else 'false' }})">
+                <i class="bi bi-braces"></i>
+              </button>
+              <a href="{{ url_for('serve_attachment', attachment_uuid=att.id) }}"
+                 class="btn btn-link btn-sm p-0 text-theme"
+                 target="_blank" rel="noopener noreferrer" title="View/Download">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="px-2 pt-2">
+          <p class="text-inverse text-opacity-50 mb-0" style="font-size:0.7rem;">
+            <i class="bi bi-info-circle me-1"></i>Click <i class="bi bi-braces"></i> to copy markdown reference.
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Security Team Invites ── #}
+    <div class="card mb-3" id="invites-section">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold d-flex align-items-center">
+        <i class="bi bi-people me-2 text-theme"></i>Security Team Invites
+        <button class="btn btn-outline-theme btn-sm ms-auto" data-bs-toggle="collapse" data-bs-target="#invite-form-collapse">
+          <i class="bi bi-plus-lg me-1"></i>Send
+        </button>
+      </div>
+      <div class="collapse" id="invite-form-collapse">
+        <div class="card-body border-bottom border-inverse border-opacity-10">
+          <form method="POST" action="{{ url_for('reports.send_invite', report_uuid=report.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div id="invite-recipients" class="mb-3">
+              <div class="invite-recipient-row d-flex gap-2 mb-2">
+                <input type="email" name="email[]" class="form-control form-control-sm" required placeholder="security@company.com">
+                <input type="text" name="label[]" class="form-control form-control-sm" placeholder="PSIRT (opt.)">
+              </div>
+            </div>
+            <button type="button" onclick="addInviteRecipient()" class="btn btn-outline-theme btn-sm mb-3">
+              <i class="bi bi-plus me-1"></i>Add
+            </button>
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Auto Follow-Up</label>
+              <div class="d-flex gap-3">
+                <div class="form-check form-check-sm">
+                  <input type="checkbox" class="form-check-input" name="followup_30" value="30" id="fu30" checked>
+                  <label class="form-check-label small" for="fu30">30d</label>
+                </div>
+                <div class="form-check form-check-sm">
+                  <input type="checkbox" class="form-check-input" name="followup_60" value="60" id="fu60" checked>
+                  <label class="form-check-label small" for="fu60">60d</label>
+                </div>
+                <div class="form-check form-check-sm">
+                  <input type="checkbox" class="form-check-input" name="followup_90" value="90" id="fu90" checked>
+                  <label class="form-check-label small" for="fu90">90d</label>
+                </div>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-theme btn-sm">
+              <i class="bi bi-send me-1"></i>Send Invite
+            </button>
+          </form>
+        </div>
+      </div>
+      {% if invites %}
+      <div class="table-responsive">
+        <table class="table table-card table-hover mb-0 small">
+          <thead class="table-dark">
+            <tr><th>Company</th><th>Status</th><th>Expiry</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for inv in invites %}
+            <tr>
+              <td>
+                <div class="fw-bold">{{ inv.company_name or '—' }}</div>
+                <div class="text-inverse text-opacity-50" style="font-size:0.65rem;">{{ inv.email }}</div>
+              </td>
+              <td>
+                {% if inv.is_locked %}<span class="badge bg-warning text-dark">LOCKED</span>
+                {% elif not inv.is_active %}<span class="badge bg-secondary">INACTIVE</span>
+                {% elif inv.first_accessed_at %}<span class="badge bg-theme">ACCESSED</span>
+                {% else %}<span class="badge bg-info">SENT</span>{% endif %}
+              </td>
+              <td class="text-inverse text-opacity-50">{{ inv.expires_at.strftime('%Y-%m-%d') if inv.expires_at else '—' }}</td>
+              <td>
+                <div class="d-flex gap-1">
+                  {% if inv.is_locked %}
+                  <form method="POST" action="{{ url_for('reports.unlock_invite', report_uuid=report.id, invite_uuid=inv.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-theme btn-sm py-0 px-1" title="Unlock"><i class="bi bi-unlock"></i></button>
+                  </form>
+                  {% else %}
+                  <button class="btn btn-outline-warning btn-sm py-0 px-1" onclick="lockInvite('{{ report.id }}','{{ inv.id }}')" title="Lock"><i class="bi bi-lock"></i></button>
+                  {% endif %}
+                  <form method="POST" action="{{ url_for('reports.extend_invite', report_uuid=report.id, invite_uuid=inv.id) }}" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="btn btn-outline-theme btn-sm py-0 px-1" title="+30 days" style="font-size:0.65rem;">+30d</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="card-body text-center py-3">
+        <p class="text-inverse text-opacity-50 small mb-0">No invites sent yet.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ── Retest Confirmation ── #}
+    {% if retest_pending_invites %}
+    <div class="card mb-3 border-theme" id="retest-confirm-section">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold" style="border-left:3px solid var(--bs-theme);">
+        <i class="bi bi-arrow-clockwise me-2 text-theme"></i>Retest Requested
+        <span class="badge bg-warning text-dark ms-2" style="font-size:0.6rem;">ACTION REQUIRED</span>
+      </div>
+      <div class="card-body py-3">
+        {% for inv in retest_pending_invites %}
+        <div class="d-flex align-items-center gap-3 mb-2 {% if not loop.last %}pb-2 border-bottom{% endif %}">
+          <div class="flex-1">
+            <div class="fw-bold small">{{ inv.company_name or inv.email }}</div>
+            <div class="text-inverse text-opacity-50" style="font-size:0.75rem;">Has asked you to verify the fix.</div>
+          </div>
+          <form method="POST" action="{{ url_for('reports.confirm_retest', report_uuid=report.id) }}" class="d-flex gap-2 align-items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="invite_uuid" value="{{ inv.id }}">
+            <button type="submit" name="outcome" value="fixed" class="btn btn-theme btn-sm">
+              <i class="bi bi-patch-check me-1"></i>Fixed
+            </button>
+            <button type="submit" name="outcome" value="bypassable" class="btn btn-outline-danger btn-sm">
+              <i class="bi bi-shield-exclamation me-1"></i>Still Vuln
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Bounty ── #}
+    {% if report.bounty_amount or payments %}
+    <div class="card mb-3" id="bounty-section">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-currency-dollar me-2 text-theme"></i>Bounty
+        <span class="text-inverse text-opacity-50 fw-normal small ms-2">offered by security team</span>
+      </div>
+      <div class="card-body py-2">
+        {% if report.bounty_amount %}
+        <div class="d-flex align-items-center gap-3 py-1">
+          <div class="rounded-circle d-flex align-items-center justify-content-center bg-theme flex-shrink-0" style="width:32px;height:32px;color:#000;">
+            <i class="bi bi-currency-dollar" style="font-size:0.85rem;"></i>
+          </div>
+          <div class="flex-1">
+            <span class="fw-bold text-theme">{{ report.bounty_amount }} {{ report.bounty_currency or 'USD' }}</span>
+            <span class="text-inverse text-opacity-50 small ms-2">offered by security team</span>
+          </div>
+          {% if report.bounty_paid_at %}
+          <span class="badge bg-theme"><i class="bi bi-check-circle me-1"></i>RECEIVED {{ report.bounty_paid_at.strftime('%Y-%m-%d') }}</span>
+          {% else %}
+          {% set _ns_bp = namespace(main_status=None) %}
+          {% for _bp in payments %}{% if not _bp.is_bonus and _ns_bp.main_status is none %}{% set _ns_bp.main_status = _bp.status %}{% endif %}{% endfor %}
+          <div class="d-flex align-items-center gap-2">
+            {% if _ns_bp.main_status == 'processing' %}
+            <span class="badge bg-warning text-dark">PROCESSING</span>
+            {% else %}
+            <span class="badge bg-secondary">PENDING</span>
+            {% endif %}
+            <form method="POST" action="{{ url_for('reports.confirm_bounty_receipt', report_uuid=report.id) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-theme btn-sm py-0 px-2" style="font-size:0.7rem;">
+                <i class="bi bi-check me-1"></i>Confirm Receipt
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% if payments %}
+        {% if report.bounty_amount %}<hr class="border-inverse border-opacity-10 my-2">{% endif %}
+        {% for p in payments %}
+        <div class="py-1 small">
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0
+                 {% if p.is_bonus %}bg-info bg-opacity-25{% else %}bg-inverse bg-opacity-10{% endif %}"
+                 style="width:24px;height:24px;">
+              <i class="bi {% if p.is_bonus %}bi-stars text-info{% else %}bi-receipt{% endif %}" style="font-size:0.65rem;"></i>
+            </div>
+            {% if p.is_bonus %}<span class="badge bg-info text-dark" style="font-size:0.6rem;">BONUS</span>{% endif %}
+            <span class="badge bg-inverse bg-opacity-25 text-inverse small">{{ p.method|upper }}</span>
+            <span class="fw-bold {% if p.is_bonus %}text-info{% endif %}">{{ p.amount }} {{ p.currency }}</span>
+            <span class="badge {% if p.status == 'completed' %}bg-theme{% elif p.status in ('pending','processing') %}bg-warning text-dark{% else %}bg-danger{% endif %}" style="font-size:0.65rem;">{{ p.status|upper }}</span>
+            {% if p.is_bonus and p.status in ('pending','processing') %}
+            <form method="POST" action="{{ url_for('reports.confirm_bonus_receipt', report_uuid=report.id, payment_uuid=p.id) }}" class="d-inline ms-auto">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-info btn-sm py-0 px-2" style="font-size:0.65rem;color:#000;">
+                <i class="bi bi-check me-1"></i>Confirm Bonus
+              </button>
+            </form>
+            {% else %}
+            <span class="text-inverse text-opacity-40 ms-auto">{{ p.initiated_at.strftime('%Y-%m-%d') if p.initiated_at }}</span>
+            {% endif %}
+          </div>
+          {% if p.is_bonus and p.status in ('pending','processing') %}
+          <div class="text-inverse text-opacity-40 ms-4 ps-2 mt-1" style="font-size:0.65rem;">{{ p.initiated_at.strftime('%Y-%m-%d') if p.initiated_at }}</div>
+          {% endif %}
+          {% set _txn = p.paypal_transaction_id or p.crypto_tx_hash %}
+          {% if _txn %}
+          <div class="d-flex align-items-center gap-1 mt-1 ms-4 ps-2">
+            <i class="bi bi-hash text-theme" style="font-size:0.7rem;"></i>
+            <span class="text-inverse text-opacity-50" style="font-size:0.7rem;">TXN:</span>
+            <code class="text-theme" style="font-size:0.7rem;word-break:break-all;">{{ _txn }}</code>
+          </div>
+          {% endif %}
+          {% if p.reference %}
+          <div class="d-flex align-items-center gap-1 mt-1 ms-4 ps-2">
+            <i class="bi bi-tag text-inverse text-opacity-50" style="font-size:0.7rem;"></i>
+            <span class="text-inverse text-opacity-50" style="font-size:0.7rem;">Ref:</span>
+            <span class="text-inverse text-opacity-75" style="font-size:0.7rem;">{{ p.reference }}</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Close as Not Applicable ── #}
+    {% if report.status not in ['not_applicable'] %}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-slash-circle me-2 text-secondary"></i>Close as Not Applicable
+      </div>
+      <div class="card-body py-2">
+        <p class="small text-inverse text-opacity-50 mb-2">Out of scope, misclassified, or otherwise not actionable.</p>
+        <form method="POST" action="{{ url_for('reports.quick_action', report_uuid=report.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="not_applicable">
+          <button type="submit" class="btn btn-outline-secondary btn-sm"
+                  onclick="return confirm('Close this report as Not Applicable?')">
+            <i class="bi bi-slash-circle me-1"></i>Not Applicable
+          </button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="card mb-3 border-secondary" style="opacity:0.8;">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body py-2">
+        <p class="small text-inverse text-opacity-50 mb-0">
+          <i class="bi bi-slash-circle me-1"></i>This report is closed as <strong>Not Applicable</strong>.
+        </p>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Activity Timeline ── #}
+    <div class="card d-flex flex-column" style="flex:1 1 0;min-height:200px;">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold flex-shrink-0">
+        <i class="bi bi-clock-history me-2 text-theme"></i>Activity
+      </div>
+      <div class="card-body p-0 flex-grow-1 d-flex flex-column" style="min-height:0;">
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:1rem 1rem 0.5rem;">
+        {% if all_activity %}
+        <div class="position-relative" style="padding-left:1.5rem;" id="activity-timeline-list">
+          <div class="position-absolute top-0 bottom-0" style="left:0.45rem;width:2px;background:rgba(255,255,255,0.06);"></div>
+          {% for evt in all_activity %}
+          {% set _act_icon_map = {
+            'invite_sent': ('send','theme'),
+            'link_clicked': ('box-arrow-in-right','info'),
+            'setup_complete': ('shield-check','theme'),
+            'reply_posted': ('chat-text','primary'),
+            'bounty_set': ('currency-dollar','warning'),
+            'bounty_sent': ('send','theme'),
+            'bounty_edited': ('pencil-square','warning'),
+            'status_changed': ('arrow-repeat','warning'),
+            'retest_requested': ('arrow-clockwise','info'),
+            'retest_confirmed': ('patch-check','theme'),
+            'report_reopened': ('arrow-counterclockwise','info'),
+            'report_edited': ('pencil','secondary'),
+            'field_edit_proposed': ('pencil-square','warning'),
+            'field_edit_accepted': ('check-circle','theme'),
+            'field_edit_rejected': ('x-circle','danger'),
+            'account_locked': ('lock','danger'),
+            'account_unlocked': ('unlock','theme'),
+            'bounty_confirmed': ('check-circle-fill','theme'),
+            'bonus_confirmed': ('check-circle-fill','info'),
+          } %}
+          {% set _act_ii = _act_icon_map.get(evt.action, ('circle','secondary')) %}
+          <div class="d-flex gap-2 mb-3 position-relative">
+            <div class="position-absolute" style="left:-1.5rem;top:0.1rem;">
+              <div class="rounded-circle d-flex align-items-center justify-content-center bg-{{ _act_ii[1] }}" style="width:18px;height:18px;">
+                <i class="bi bi-{{ _act_ii[0] }}" style="font-size:0.55rem;color:{% if _act_ii[1] in ('warning','theme') %}#000{% else %}#fff{% endif %};"></i>
+              </div>
+            </div>
+            <div class="flex-1 min-width-0">
+              <div class="small fw-bold text-inverse">
+                {% if evt.action == 'invite_sent' %}Invite sent
+                {% elif evt.action == 'link_clicked' %}Portal link accessed
+                {% elif evt.action == 'setup_complete' %}Portal setup completed
+                {% elif evt.action == 'reply_posted' %}
+                  {% set _m = evt.metadata_ or {} %}
+                  {% set _ra = _m.get('author') or ('Researcher' if _m.get('author_type') == 'owner' else ('Security Team' if _m.get('author_type') else None)) %}
+                  {% if _ra == 'Researcher' %}<span class="text-theme">Researcher</span> replied
+                  {% elif _ra %}<span class="text-info">{{ _ra }}</span> <span class="text-inverse text-opacity-50">(Security Team)</span> replied
+                  {% else %}Reply posted{% endif %}
+                {% elif evt.action == 'report_edited' %}Report updated by researcher
+                {% elif evt.action == 'bounty_set' %}{% if evt.metadata_ and evt.metadata_.get('bonus') %}<span class="text-warning fw-bold">Bonus offered</span>{% else %}Bounty offered{% endif %}{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-warning">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% elif evt.action == 'bounty_sent' %}Payment sent{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-theme">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% elif evt.action == 'bounty_edited' %}Bounty updated{% if evt.metadata_ %} — <span class="text-inverse text-opacity-50">{{ evt.metadata_.get('old_amount','?') }} {{ evt.metadata_.get('old_currency','') }}</span> → <span class="text-warning">{{ evt.metadata_.get('new_amount','?') }} {{ evt.metadata_.get('new_currency','') }}</span>{% endif %}
+                {% elif evt.action == 'retest_requested' %}Retest requested by <span class="text-info">Security Team</span>
+                {% elif evt.action == 'retest_confirmed' %}Retest confirmed{% if evt.metadata_ and evt.metadata_.get('outcome') %} — <span class="{% if evt.metadata_['outcome'] == 'fixed' %}text-theme{% else %}text-danger{% endif %}">{{ evt.metadata_['outcome']|title }}</span>{% endif %}
+                {% elif evt.action == 'report_reopened' %}Report reopened{% if evt.metadata_ and evt.metadata_.get('reopened_by') %} by <span class="text-info">{{ evt.metadata_['reopened_by'] }}</span>{% endif %}
+                {% elif evt.action == 'status_changed' %}Status → {% if evt.metadata_ and evt.metadata_.get('new_status') %}<span class="badge bg-secondary" style="font-size:0.55rem;">{{ evt.metadata_['new_status']|upper }}</span>{% endif %}
+                {% elif evt.action == 'field_edit_proposed' %}Correction proposed{% if evt.metadata_ and evt.metadata_.get('field_name') %}: {{ evt.metadata_['field_name']|replace('_',' ') }}{% endif %}
+                {% elif evt.action == 'field_edit_accepted' %}Correction accepted
+                {% elif evt.action == 'field_edit_rejected' %}Correction rejected
+                {% elif evt.action == 'account_locked' %}Access locked
+                {% elif evt.action == 'account_unlocked' %}Access restored
+                {% elif evt.action == 'bounty_confirmed' %}<span class="text-theme fw-bold">Bounty receipt confirmed</span>{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-theme">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% elif evt.action == 'bonus_confirmed' %}<span class="text-info fw-bold">Bonus receipt confirmed</span>{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-info">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% else %}{{ evt.action | replace('_',' ') | title }}{% endif %}
+              </div>
+              {% set _act_inv = namespace(name=None) %}
+              {% for inv in invites %}{% if inv.id == evt.invite_id %}{% set _act_inv.name = inv.company_name or inv.email %}{% endif %}{% endfor %}
+              {% if _act_inv.name %}
+              <div class="text-inverse text-opacity-40" style="font-size:0.65rem;">{{ _act_inv.name }}</div>
+              {% endif %}
+              <div class="text-inverse text-opacity-50" style="font-size:0.65rem;">{{ evt.performed_at.strftime('%Y-%m-%d %H:%M UTC') if evt.performed_at else '—' }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-inverse text-opacity-50 small mb-0">No activity yet.</p>
+        {% endif %}
+        </div>{# end scrollable #}
+      </div>
+    </div>
+
+  </div>{# end right column #}
+</div>{# end row #}
+
+{# ════ Discussion — unified thread + reply form (full width) ════ #}
+<div class="card mb-3" id="replies-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-chat-dots me-2 text-theme"></i>Discussion
+    {% if thread_items %}<span class="badge bg-secondary ms-1">{{ thread_items|length }}</span>{% endif %}
+  </div>
+  <div class="card-body">
+    {# Thread #}
+    <div id="owner-replies-scroll" class="mb-4" style="max-height:520px;overflow-y:auto;">
+      {% if thread_items %}
+      {% for item in thread_items %}
+      {% if item.item_type == 'reply' %}
+      <div class="d-flex gap-3 mb-3 thread-reply-item align-items-start
+                  {% if item.author_type == 'owner' %}flex-row-reverse{% endif %}">
+        <div class="flex-shrink-0">
+          <div class="rounded-circle d-flex align-items-center justify-content-center
+            {% if item.author_type == 'owner' %}bg-theme{% else %}bg-info{% endif %}"
+            style="width:34px;height:34px;color:#000;font-weight:bold;font-size:0.7rem;">
+            {{ item.author_name[:1]|upper }}
+          </div>
+        </div>
+        <div class="min-width-0{% if item.author_type == 'owner' %} text-end{% endif %}" style="max-width:78%;">
+          <div class="d-flex align-items-center gap-2 mb-1 {% if item.author_type == 'owner' %}justify-content-end{% endif %}">
+            <span class="badge {% if item.author_type == 'owner' %}bg-theme{% else %}bg-info{% endif %} small">{{ item.author_name }}</span>
+            <span class="text-inverse text-opacity-35" style="font-size:0.65rem;">{% if item.author_type == 'owner' %}Researcher{% else %}Security Team{% endif %}</span>
+            <span class="text-inverse text-opacity-40" style="font-size:0.7rem;">{{ item.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</span>
+          </div>
+          <div class="d-inline-block p-2 rounded markdown-content small text-start"
+               style="max-width:100%; background:rgba({% if item.author_type == 'owner' %}0,212,150{% else %}0,180,220{% endif %},0.08); border-left:2px solid rgba({% if item.author_type == 'owner' %}0,212,150{% else %}0,180,220{% endif %},0.35);">
+            {{ item.body_html|safe }}
+          </div>
+        </div>
+      </div>
+      {% elif item.item_type == 'event' %}
+      <div class="d-flex align-items-center gap-2 mb-3 px-3 py-2 rounded thread-event-item"
+           style="background:rgba(0,212,255,0.04);border-left:3px solid rgba(0,212,255,0.2);">
+        <i class="bi bi-{{ item.icon }} text-theme flex-shrink-0" style="font-size:0.8rem;"></i>
+        <span class="small text-inverse text-opacity-75 flex-1">{{ item.label }}</span>
+        <span class="text-inverse text-opacity-40 small">{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+      {% endif %}
+      {% endfor %}
+      {% else %}
+      <p class="text-inverse text-opacity-50 small mb-0" id="no-thread-msg">No discussion yet.</p>
+      {% endif %}
+    </div>
+
+    <hr class="border-inverse border-opacity-10 mt-0 mb-3">
+
+    {# Reply form #}
+    <form id="owner-reply-form" method="POST"
+          action="{{ url_for('reports.reply', report_uuid=report.id) }}"
+          enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if attachments %}
+      <div class="mb-2 p-2 rounded bg-inverse bg-opacity-5" style="border:1px solid rgba(255,255,255,0.06);">
+        <div class="text-inverse text-opacity-50 mb-1" style="font-size:0.7rem;">
+          <i class="bi bi-paperclip me-1"></i>Reference attachments in reply:
+        </div>
+        <div class="d-flex flex-wrap gap-1">
+          {% for att in attachments %}
+          {% set _is_img = att.mime_type.startswith('image/') %}
+          <button type="button"
+                  class="btn btn-link btn-sm p-0 d-flex align-items-center gap-1 text-inverse text-opacity-60"
+                  style="font-size:0.7rem;text-decoration:none;"
+                  title="Insert {{ '![image]' if _is_img else '[link]' }} reference"
+                  onclick="ownerInsertRef('{{ att.filename_original | replace("'", "\\'") }}', '{{ url_for('serve_attachment', attachment_uuid=att.id) }}', {{ 'true' if _is_img else 'false' }})">
+            <i class="bi bi-{% if _is_img %}image{% elif 'pdf' in att.mime_type %}file-pdf{% elif 'video' in att.mime_type %}camera-video{% else %}file-earmark{% endif %} text-theme"></i>
+            <span class="text-truncate" style="max-width:100px;">{{ att.filename_original|truncate(18, True) }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      <div class="mb-2">
+        <textarea name="body" id="owner-reply-body" class="form-control" rows="4"
+                  placeholder="Write a reply… (Markdown supported)"></textarea>
+      </div>
+      <div class="mb-3">
+        <input type="file" name="reply_attachments" multiple class="form-control form-control-sm"
+               accept=".png,.jpg,.jpeg,.gif,.pdf,.txt,.log,.mp4,.mov,.webm">
+        <div class="form-text text-inverse text-opacity-50 small">Optional: attach images or files</div>
+      </div>
+      <div class="d-flex align-items-center justify-content-between">
+        <div class="form-check">
+          <input type="checkbox" class="form-check-input" name="is_internal" id="is-internal" value="1">
+          <label class="form-check-label small" for="is-internal">
+            <i class="bi bi-lock me-1"></i>Internal note (only you can see this)
+          </label>
+        </div>
+        <button type="submit" class="btn btn-theme btn-sm">
+          <i class="bi bi-send me-1"></i>Post Reply
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// Auto-scroll thread to bottom on load
+(function() {
+  var sc = document.getElementById('owner-replies-scroll');
+  if (sc) sc.scrollTop = sc.scrollHeight;
+})();
+
+// ── Real-time polling for new discussion items ──
+(function() {
+  var lastSince = new Date().toISOString();
+  var pollUrl = '{{ url_for("reports.poll_updates", report_uuid=report.id) }}';
+  var container = document.getElementById('owner-replies-scroll');
+
+  function appendItem(item) {
+    var noMsg = document.getElementById('no-thread-msg');
+    if (noMsg) noMsg.remove();
+    if (!container) {
+      var card = document.getElementById('replies-section');
+      var form = card ? card.querySelector('form') : null;
+      if (!form) return;
+      container = document.createElement('div');
+      container.id = 'owner-replies-scroll';
+      container.className = 'mb-4';
+      form.parentNode.insertBefore(container, form);
+    }
+    var div = document.createElement('div');
+    if (item.item_type === 'reply') {
+      var isOwner = item.author_type === 'owner';
+      var bubbleBg  = isOwner ? 'rgba(0,212,150,0.08)' : 'rgba(0,180,220,0.08)';
+      var bubbleBdr = isOwner ? 'rgba(0,212,150,0.35)' : 'rgba(0,180,220,0.35)';
+      div.className = 'd-flex gap-3 mb-3 thread-reply-item align-items-start' + (isOwner ? ' flex-row-reverse' : '');
+      div.innerHTML =
+        '<div class="flex-shrink-0"><div class="rounded-circle d-flex align-items-center justify-content-center ' +
+        (isOwner ? 'bg-theme' : 'bg-info') +
+        '" style="width:34px;height:34px;color:#000;font-weight:bold;font-size:0.7rem;">' +
+        (item.author_name ? item.author_name.charAt(0).toUpperCase() : (isOwner ? 'R' : 'S')) + '</div></div>' +
+        '<div class="min-width-0' + (isOwner ? ' text-end' : '') + '" style="max-width:78%;"><div class="d-flex align-items-center gap-2 mb-1' + (isOwner ? ' justify-content-end' : '') + '">' +
+        '<span class="badge ' + (isOwner ? 'bg-theme' : 'bg-info') + ' small">' + (item.author_name || '') + '</span>' +
+        '<span class="text-inverse text-opacity-35" style="font-size:0.65rem;">' + (isOwner ? 'Researcher' : 'Security Team') + '</span>' +
+        '<span class="text-inverse text-opacity-40" style="font-size:0.7rem;">' +
+        new Date(item.created_at).toISOString().replace('T', ' ').substring(0, 16) + ' UTC</span></div>' +
+        '<div class="d-inline-block p-2 rounded markdown-content small text-start" style="max-width:100%;background:' + bubbleBg + ';border-left:2px solid ' + bubbleBdr + ';">' +
+        item.body_html + '</div></div>';
+    } else {
+      div.className = 'd-flex align-items-center gap-2 mb-3 px-3 py-2 rounded thread-event-item';
+      div.style.cssText = 'background:rgba(0,212,255,0.04);border-left:3px solid rgba(0,212,255,0.25);';
+      div.innerHTML =
+        '<i class="bi bi-' + item.icon + ' text-theme flex-shrink-0"></i>' +
+        '<span class="small text-inverse text-opacity-75 flex-1">' + item.label + '</span>' +
+        '<span class="text-inverse text-opacity-40 small">' +
+        new Date(item.created_at).toISOString().replace('T', ' ').substring(0, 16) + '</span>';
+    }
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
+
+  var _retestReloadPending = false;
+
+  function doPoll() {
+    fetch(pollUrl + '?since=' + encodeURIComponent(lastSince), {credentials: 'same-origin'})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        if (data.items && data.items.length > 0) data.items.forEach(appendItem);
+        lastSince = data.now;
+        if (data.retest_pending && !document.getElementById('retest-confirm-section') && !_retestReloadPending) {
+          _retestReloadPending = true;
+          var toast = document.createElement('div');
+          toast.className = 'alert alert-warning alert-dismissible fade show';
+          toast.style.cssText = 'position:fixed;top:70px;right:20px;z-index:1070;max-width:340px;font-size:0.85rem;';
+          toast.innerHTML = '<i class="bi bi-arrow-clockwise me-2"></i><strong>Retest requested.</strong> Reloading page&hellip;'
+            + '<button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button>';
+          document.body.appendChild(toast);
+          setTimeout(function() { window.location.reload(); }, 2500);
+        }
+      })
+      .catch(function() {});
+  }
+  setInterval(doPoll, 8000);
+})();
+
+function addInviteRecipient() {
+  var c = document.getElementById('invite-recipients');
+  var div = document.createElement('div');
+  div.className = 'invite-recipient-row d-flex gap-2 mb-2';
+  div.innerHTML = '<input type="email" name="email[]" class="form-control form-control-sm" required placeholder="security@company.com">'
+    + '<input type="text" name="label[]" class="form-control form-control-sm" placeholder="Label (opt.)">';
+  c.appendChild(div);
+}
+
+function ownerCopyRef(btn, filename, url, isImage) {
+  var syntax = isImage ? '![' + filename + '](' + url + ')' : '[' + filename + '](' + url + ')';
+  navigator.clipboard.writeText(syntax).then(function() {
+    var icon = btn.querySelector('i');
+    var prev = icon.className;
+    icon.className = 'bi bi-check text-theme';
+    setTimeout(function() { icon.className = prev; }, 1500);
+  }).catch(function() { prompt('Copy this reference:', syntax); });
+}
+
+function ownerInsertRef(filename, url, isImage) {
+  var ta = document.getElementById('owner-reply-body');
+  if (!ta) return;
+  var syntax = isImage ? '![' + filename + '](' + url + ')' : '[' + filename + '](' + url + ')';
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var before = ta.value.substring(0, start);
+  var after = ta.value.substring(end);
+  var sep = (before.length > 0 && !before.endsWith('\n')) ? '\n' : '';
+  ta.value = before + sep + syntax + after;
+  ta.selectionStart = ta.selectionEnd = start + sep.length + syntax.length;
+  ta.focus();
+}
+
+function lockInvite(reportId, inviteId) {
+  var reason = prompt('Lock reason (optional):');
+  if (reason === null) return;
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/reports/' + reportId + '/invite/' + inviteId + '/lock';
+  form.innerHTML = '<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">'
+    + '<input type="hidden" name="reason" value="' + reason.replace(/"/g, '&quot;') + '">';
+  document.body.appendChild(form);
+  form.submit();
+}
+</script>
+{% endblock %}

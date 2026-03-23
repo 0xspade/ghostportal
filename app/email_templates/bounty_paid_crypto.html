@@ -1,0 +1,18 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Bug Bounty Payment — {{ amount }} {{ currency }} via Crypto{% endblock %}
+{% block body %}
+<h2>Bug Bounty Payment Sent</h2>
+<p>A cryptocurrency bounty payment has been recorded for vulnerability report <strong>{{ report.display_id }}</strong>.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Report</span><span class="meta-val">{{ report.display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">Amount</span><span class="meta-val" style="color:#00ff88;">{{ amount }} {{ currency }}</span></div>
+  <div class="meta-row"><span class="meta-key">Network</span><span class="meta-val">{{ network }}</span></div>
+  {% if tx_hash %}<div class="meta-row"><span class="meta-key">TX Hash</span><span class="meta-val"><code style="font-size:10px; word-break:break-all;">{{ tx_hash }}</code></span></div>{% endif %}
+  {% if address %}<div class="meta-row"><span class="meta-key">Address</span><span class="meta-val"><code style="font-size:10px; word-break:break-all;">{{ address }}</code></span></div>{% endif %}
+</div>
+{% if currency == 'XMR' %}
+<div class="notice-box"><p class="notice-text">Monero transactions are private and cannot be verified on a public blockchain. Payment is recorded as reported by the researcher.</p></div>
+{% else %}
+<div class="notice-box"><p class="notice-text">You can verify this transaction on a blockchain explorer. Confirmation may take a few minutes depending on network congestion.</p></div>
+{% endif %}
+{% endblock %}

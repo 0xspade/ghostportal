@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark" class="bg-cover-4">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{% block title %}GhostPortal{% endblock %} — {{ config.PLATFORM_NAME | default('GhostPortal') }}</title>
+  <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+  {% block extra_css %}{% endblock %}
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div id="app" class="app">
+
+  <header id="header" class="app-header">
+    <button type="button" class="menu-toggler mobile-toggler" data-toggle-class="app-sidebar-mobile-toggled" data-toggle-target="#app">
+      <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+    </button>
+    <div class="brand">
+      <a href="{% if session.get('role') == 'owner' %}{{ url_for('dashboard.index') }}{% elif session.get('portal_role') == 'security_team' %}{{ url_for('portal.dashboard') }}{% else %}{{ url_for('auth.login') }}{% endif %}" class="brand-logo">
+        <span class="brand-img"><span class="brand-img-text text-theme">G</span></span>
+        <span class="brand-text">{{ config.PLATFORM_NAME | default('GhostPortal') }}</span>
+      </a>
+    </div>
+    <button type="button" class="menu-toggler desktop-toggler" data-toggle-class="app-sidebar-minified" data-toggle-target="#app">
+      <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+    </button>
+    <div class="menu ms-auto gap-2">
+      {% if session.get('role') == 'owner' %}
+      <div class="menu-item">
+        <span class="badge bg-theme">OWNER</span>
+      </div>
+      {% elif session.get('portal_role') == 'security_team' %}
+      <div class="menu-item">
+        <span class="badge bg-info">SECURITY TEAM</span>
+      </div>
+      {% endif %}
+      {% if session.get('role') %}
+      <div class="menu-item">
+        <form action="{{ url_for('auth.logout') }}" method="post" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline-theme btn-sm">
+            <i class="bi bi-box-arrow-right me-1"></i>Logout
+          </button>
+        </form>
+      </div>
+      {% elif session.get('portal_role') == 'security_team' %}
+      <div class="menu-item">
+        <form action="{{ url_for('portal.portal_logout') }}" method="post" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-outline-theme btn-sm">
+            <i class="bi bi-box-arrow-right me-1"></i>Logout
+          </button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if session.get('role') == 'owner' %}
+  <div id="sidebar" class="app-sidebar">
+    <div class="app-sidebar-content" data-scrollbar="true" data-height="100%">
+      <div class="menu">
+        <div class="menu-header">NAVIGATION</div>
+        <div class="menu-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+          <a href="{{ url_for('dashboard.index') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-speedometer2"></i></span>
+            <span class="menu-text">Dashboard</span>
+          </a>
+        </div>
+        <div class="menu-item {% if request.blueprint == 'reports' %}active{% endif %}">
+          <a href="{{ url_for('reports.list_reports') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-file-earmark-text"></i></span>
+            <span class="menu-text">Reports</span>
+          </a>
+        </div>
+        <div class="menu-item {% if request.blueprint == 'security_teams' %}active{% endif %}">
+          <a href="{{ url_for('security_teams.list_teams') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-people"></i></span>
+            <span class="menu-text">Security Teams</span>
+          </a>
+        </div>
+        <div class="menu-item {% if request.blueprint == 'templates' %}active{% endif %}">
+          <a href="{{ url_for('templates.list_templates') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-layout-text-window"></i></span>
+            <span class="menu-text">Templates</span>
+          </a>
+        </div>
+        <div class="menu-item {% if request.blueprint == 'settings' %}active{% endif %}">
+          <a href="{{ url_for('settings.index') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-gear"></i></span>
+            <span class="menu-text">Settings</span>
+          </a>
+        </div>
+        <div class="menu-header">LEGAL</div>
+        <div class="menu-item">
+          <a href="{{ url_for('legal.terms') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-file-text"></i></span>
+            <span class="menu-text">Terms of Service</span>
+          </a>
+        </div>
+        <div class="menu-item">
+          <a href="{{ url_for('legal.privacy') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-shield-check"></i></span>
+            <span class="menu-text">Privacy Policy</span>
+          </a>
+        </div>
+        <div class="menu-item">
+          <a href="{{ url_for('legal.disclosure_policy') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-journal-text"></i></span>
+            <span class="menu-text">Disclosure Policy</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% elif session.get('portal_role') == 'security_team' %}
+  <div id="sidebar" class="app-sidebar">
+    <div class="app-sidebar-content" data-scrollbar="true" data-height="100%">
+      <div class="menu">
+        <div class="menu-header">PORTAL</div>
+        <div class="menu-item {% if request.endpoint == 'portal.dashboard' %}active{% endif %}">
+          <a href="{{ url_for('portal.dashboard') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-grid"></i></span>
+            <span class="menu-text">My Reports</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div id="content" class="app-content">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="mb-3">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' if category == 'warning' else 'info' }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+</div>
+
+
+<script src="{{ url_for('static', filename='hud/js/vendor.min.js') }}"></script>
+<script src="{{ url_for('static', filename='hud/js/app.min.js') }}"></script>
+{% block extra_js %}{% endblock %}
+<script src="{{ url_for('static', filename='js/external_links.js') }}"></script>
+</body>
+</html>

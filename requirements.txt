@@ -1,0 +1,79 @@
+# GhostPortal — Project-Apocalypse
+# Copyright (C) 2026 Spade
+# AGPL-3.0 License
+
+# Core Framework
+flask==3.1.0
+flask-sqlalchemy==3.1.1
+flask-migrate==4.0.7
+flask-wtf==1.2.1
+flask-mail==0.10.0
+flask-limiter==3.8.0
+flask-talisman==1.1.0
+
+# Database
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# Async
+celery==5.4.0
+redis==5.2.1
+kombu==5.4.2
+
+# Security & Auth
+bleach==6.2.0
+python-magic==0.4.27
+Pillow==11.1.0
+pypdf==5.1.0
+pyotp==2.9.0
+qrcode==8.0
+ua-parser==0.18.0
+
+# Markdown
+markdown==3.7
+pymdown-extensions==10.12
+
+# AI Providers
+anthropic==0.40.0
+openai==1.58.1
+google-generativeai==0.8.3
+httpx==0.28.1
+
+# HTTP / Networking
+requests==2.32.3
+urllib3==2.3.0
+
+# Payments
+paypalrestsdk==1.13.3
+paypalhttp==1.0.1
+
+# Export
+weasyprint==62.3
+openpyxl==3.1.5
+
+# GeoIP (optional)
+maxminddb==2.6.2
+
+# Crypto address validation
+base58==2.1.1
+bech32==1.2.0
+
+# Utils
+python-dotenv==1.0.1
+click==8.1.8
+gunicorn==23.0.0
+cryptography==44.0.0
+
+# Dev / Testing / Audit
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-flask==1.3.0
+freezegun==1.5.1
+responses==0.25.3
+ruff==0.8.4
+mypy==1.14.0
+bandit==1.8.0
+pip-audit==2.8.0
+safety==3.2.14
+detect-secrets==1.5.0

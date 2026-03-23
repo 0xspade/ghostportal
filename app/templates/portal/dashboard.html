@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Portal Dashboard — {{ platform_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div>
+    <h1 class="page-header-title fw-bold mb-1">SECURITY TEAM PORTAL</h1>
+    {% if member %}
+    <div class="text-inverse text-opacity-50 small">
+      <i class="bi bi-building me-1"></i>{{ member.company_name or member.email }}
+      <span class="mx-2">·</span>
+      <i class="bi bi-envelope me-1"></i>{{ member.email }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if active_invites %}
+<div class="row g-3">
+  {% for inv in active_invites %}
+  {% set r = inv.report %}
+  <div class="col-xl-4 col-lg-6">
+    <div class="card h-100 {% if inv.is_locked %}opacity-75{% endif %}">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+
+      {% if inv.is_locked %}
+      <div class="card-body text-center py-5">
+        <div class="text-warning mb-2" style="font-size:2.5rem;"><i class="bi bi-lock"></i></div>
+        <h5 class="fw-bold text-warning mb-2">Access Suspended</h5>
+        {% if inv.lock_reason %}
+        <p class="text-inverse text-opacity-50 small mb-0">{{ inv.lock_reason }}</p>
+        {% else %}
+        <p class="text-inverse text-opacity-50 small mb-0">Contact the researcher for assistance.</p>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="card-header d-flex align-items-center gap-2">
+        {% if r.severity == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+        {% elif r.severity == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+        {% elif r.severity == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+        {% elif r.severity == 'low' %}<span class="badge bg-info">LOW</span>
+        {% elif r.severity %}<span class="badge bg-secondary">{{ r.severity|upper }}</span>
+        {% else %}<span class="badge bg-secondary">UNRATED</span>{% endif %}
+        <code class="text-theme ms-auto small">{{ r.display_id }}</code>
+      </div>
+      <div class="card-body">
+        <h5 class="fw-bold mb-2">{{ r.title|truncate(80) }}</h5>
+        {% if r.cwe_id %}
+        <div class="text-inverse text-opacity-50 small mb-1">
+          <i class="bi bi-bug me-1"></i>CWE-{{ r.cwe_id }}{% if r.cwe_name %}: {{ r.cwe_name }}{% endif %}
+        </div>
+        {% endif %}
+        {% if r.target_asset %}
+        <div class="text-inverse text-opacity-50 small mb-2">
+          <i class="bi bi-bullseye me-1"></i>{{ r.target_asset|truncate(60) }}
+        </div>
+        {% endif %}
+        <div class="d-flex flex-wrap gap-1 mb-0">
+          {% set s = r.status %}
+          {% if s == 'draft' %}<span class="badge bg-secondary">DRAFT</span>
+          {% elif s == 'submitted' %}<span class="badge bg-primary">SUBMITTED</span>
+          {% elif s == 'triaged' %}<span class="badge bg-warning text-dark">TRIAGED</span>
+          {% elif s == 'duplicate' %}<span class="badge bg-secondary">DUPLICATE</span>
+          {% elif s == 'informative' %}<span class="badge bg-info">INFORMATIVE</span>
+          {% elif s == 'resolved' %}<span class="badge bg-theme">RESOLVED</span>
+          {% elif s == 'wont_fix' %}<span class="badge bg-danger">WON'T FIX</span>
+          {% else %}<span class="badge bg-secondary">{{ s|upper }}</span>{% endif %}
+          {% if r.cvss_score %}
+          <span class="badge bg-inverse bg-opacity-25 text-inverse">CVSS {{ '%.1f'|format(r.cvss_score|float) }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-footer d-flex align-items-center justify-content-between">
+        <span class="text-inverse text-opacity-50 small">
+          <i class="bi bi-clock me-1"></i>Expires {{ inv.expires_at.strftime('%Y-%m-%d') if inv.expires_at else 'Never' }}
+        </span>
+        <a href="{{ url_for('portal.view_report', invite_uuid=inv.id) }}" class="btn btn-theme btn-sm">
+          View Report <i class="bi bi-arrow-right ms-1"></i>
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-body text-center py-5">
+    <i class="bi bi-clipboard text-inverse text-opacity-25 mb-3" style="font-size:3rem; display:block;"></i>
+    <p class="text-inverse text-opacity-50 mb-0">No active report assignments.</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{% block subject %}GhostPortal{% endblock %}</title>
+  <style>
+    body {
+      margin: 0; padding: 0;
+      font-family: 'Courier New', Courier, monospace;
+      background-color: #0a0e1a;
+      color: #e0e6f0;
+    }
+    .wrapper {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+    .header {
+      border: 1px solid #00ff8833;
+      border-radius: 6px 6px 0 0;
+      background: #0d1117;
+      padding: 20px 24px;
+      text-align: center;
+    }
+    .header-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00ff88;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin: 0;
+    }
+    .header-subtitle {
+      font-size: 11px;
+      color: #8899aa;
+      margin: 6px 0 0;
+      letter-spacing: 1px;
+    }
+    .divider {
+      border: none;
+      border-top: 1px solid #1e2d3d;
+      margin: 0;
+    }
+    .body {
+      background: #0d1117;
+      border: 1px solid #1e2d3d;
+      border-top: none;
+      border-bottom: none;
+      padding: 28px 24px;
+    }
+    .footer {
+      background: #0d1117;
+      border: 1px solid #1e2d3d;
+      border-top: 1px solid #1e2d3d;
+      border-radius: 0 0 6px 6px;
+      padding: 16px 24px;
+      text-align: center;
+    }
+    .footer-text {
+      font-size: 11px;
+      color: #445566;
+      line-height: 1.6;
+    }
+    h2 {
+      font-size: 15px;
+      color: #e0e6f0;
+      margin: 0 0 12px;
+    }
+    p {
+      font-size: 13px;
+      color: #8899aa;
+      line-height: 1.7;
+      margin: 0 0 16px;
+    }
+    .severity-card {
+      background: #111827;
+      border: 1px solid #1e2d3d;
+      border-radius: 4px;
+      padding: 16px;
+      margin: 16px 0;
+    }
+    .severity-label {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      padding: 3px 10px;
+      border-radius: 3px;
+      margin-bottom: 12px;
+    }
+    .severity-critical { background: rgba(255,64,64,0.15); color: #ff4040; border: 1px solid rgba(255,64,64,0.4); }
+    .severity-high     { background: rgba(255,100,0,0.15); color: #ff6400; border: 1px solid rgba(255,100,0,0.4); }
+    .severity-medium   { background: rgba(255,170,0,0.15); color: #ffaa00; border: 1px solid rgba(255,170,0,0.4); }
+    .severity-low      { background: rgba(0,212,255,0.12); color: #00d4ff; border: 1px solid rgba(0,212,255,0.3); }
+    .severity-informational { background: rgba(100,100,120,0.2); color: #8899aa; border: 1px solid #1e2d3d; }
+    .meta-row { font-size: 12px; color: #8899aa; margin: 6px 0; }
+    .meta-key { color: #445566; display: inline-block; min-width: 100px; }
+    .meta-val { color: #e0e6f0; }
+    .btn-cta {
+      display: block;
+      text-align: center;
+      background: rgba(0,255,136,0.08);
+      border: 1px solid rgba(0,255,136,0.5);
+      color: #00ff88;
+      text-decoration: none;
+      padding: 14px 28px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 1.5px;
+      margin: 20px 0;
+    }
+    .url-text {
+      font-size: 11px;
+      color: #445566;
+      word-break: break-all;
+      text-align: center;
+      margin-top: -10px;
+    }
+    .code-box {
+      background: #111827;
+      border: 1px solid #1e2d3d;
+      border-radius: 4px;
+      padding: 16px;
+      text-align: center;
+      margin: 16px 0;
+    }
+    .code-label { font-size: 11px; color: #445566; margin: 0 0 8px; letter-spacing: 1px; text-transform: uppercase; }
+    .code-value { font-size: 18px; color: #00ff88; letter-spacing: 6px; font-weight: bold; }
+    .notice-box {
+      background: rgba(255,170,0,0.05);
+      border: 1px solid rgba(255,170,0,0.3);
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin: 16px 0;
+    }
+    .notice-text { font-size: 12px; color: #ffaa00; margin: 0; }
+    .platform-banner {
+      background: #111827;
+      border: 1px solid #1e2d3d;
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      color: #8899aa;
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- Header -->
+  <div class="header">
+    <p class="header-title">GhostPortal</p>
+    <p class="header-subtitle">Secure Vulnerability Disclosure Platform</p>
+  </div>
+  <hr class="divider">
+
+  <!-- Body -->
+  <div class="body">
+    {% block body %}{% endblock %}
+  </div>
+  <hr class="divider">
+
+  <!-- Footer -->
+  <div class="footer">
+    <p class="footer-text">
+      Sent by {{ platform_name | default('GhostPortal') }}
+      {% if operator_name %} operated by {{ operator_name }}{% endif %}
+      {% if operator_email %} · {{ operator_email }}{% endif %}
+      <br>
+      {% if platform_url %}<a href="{{ platform_url }}" style="color:#445566;">{{ platform_url }}</a>{% endif %}
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

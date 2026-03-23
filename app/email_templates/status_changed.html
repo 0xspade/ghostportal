@@ -1,0 +1,17 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Status Update — {{ report.display_id }}: {{ new_status|replace('_',' ')|upper }}{% endblock %}
+{% block body %}
+<h2>Report Status Updated</h2>
+<p>The status of vulnerability report <strong>{{ report.display_id }}</strong> has been updated.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Report</span><span class="meta-val">{{ report.display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">New Status</span><span class="meta-val" style="color:#00ff88;">{{ new_status|replace('_',' ')|upper }}</span></div>
+  <div class="meta-row"><span class="meta-key">Updated by</span><span class="meta-val">{{ company_name or 'Security Team' }}</span></div>
+  {% if explanation %}
+  <div class="meta-row" style="margin-top:8px;">
+    <p style="color:#e0e6f0; font-size:13px; margin:0;">{{ explanation }}</p>
+  </div>
+  {% endif %}
+</div>
+<a href="{{ dashboard_url }}" class="btn-cta">VIEW REPORT →</a>
+{% endblock %}

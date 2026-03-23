@@ -1,0 +1,31 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Follow-Up: Security Vulnerability Report — {{ report.program_name or 'Unknown' }} | Day {{ followup_day }}{% endblock %}
+{% block body %}
+<div class="platform-banner">{{ platform_name }} — Follow-Up #{{ followup_number }} of 3 (Day {{ followup_day }})</div>
+
+<h2>Follow-Up: Vulnerability Report</h2>
+<p>This is a follow-up on a vulnerability report sent {{ days_since }} days ago that has not yet received a response.</p>
+
+<div class="severity-card">
+  <span class="severity-label severity-{{ report.severity }}">{{ (report.severity or 'UNKNOWN')|upper }}</span>
+  <div class="meta-row"><span class="meta-key">Report ID</span><span class="meta-val">{{ report.display_id }}</span></div>
+  {% if report.cwe_id %}<div class="meta-row"><span class="meta-key">CWE</span><span class="meta-val">CWE-{{ report.cwe_id }}{% if report.cwe_name %}: {{ report.cwe_name }}{% endif %}</span></div>{% endif %}
+  {% if report.cvss_score %}<div class="meta-row"><span class="meta-key">CVSS 4.0</span><span class="meta-val">{{ '%.1f'|format(report.cvss_score) }}</span></div>{% endif %}
+  {% if report.target_asset %}<div class="meta-row"><span class="meta-key">Target</span><span class="meta-val">{{ report.target_asset }}</span></div>{% endif %}
+</div>
+
+{% if not first_accessed %}
+<div class="notice-box"><p class="notice-text">⚠ The report has not yet been viewed. We encourage you to review it at your earliest convenience.</p></div>
+{% else %}
+<p>The report was accessed but no response has been submitted yet.</p>
+{% endif %}
+
+<a href="{{ portal_url }}" class="btn-cta">ACCESS VULNERABILITY REPORT →</a>
+<p class="url-text">{{ portal_url }}</p>
+
+{% if followup_day == 90 %}
+<div class="notice-box">
+  <p class="notice-text">This is our final follow-up. The report will remain accessible until {{ expires_at.strftime('%Y-%m-%d') if expires_at else 'expiry' }}. After expiry, we may pursue other disclosure options.</p>
+</div>
+{% endif %}
+{% endblock %}

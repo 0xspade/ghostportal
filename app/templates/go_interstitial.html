@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Leaving {{ platform_name | default('GhostPortal') }}</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self'">
+  <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+</head>
+<body>
+<div id="app" class="app app-full-height app-without-header">
+  <div class="login">
+    <div class="login-content" style="max-width:480px;">
+
+      <div class="text-center mb-4">
+        <div class="text-warning mb-3" style="font-size:3rem;">
+          <i class="bi bi-exclamation-triangle"></i>
+        </div>
+        <h1 class="fw-bold mb-1" style="font-size:1.5rem; letter-spacing:0.05em;">
+          LEAVING {{ platform_name | default('GhostPortal') }}
+        </h1>
+        <p class="text-inverse text-opacity-50 small">You are about to visit an external website</p>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-arrow">
+          <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+          <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+        </div>
+        <div class="card-body">
+          <p class="text-inverse text-opacity-75 small mb-2">Destination domain:</p>
+          <div class="p-3 mb-3 rounded font-monospace text-info fw-bold text-break"
+               style="background: rgba(0,0,0,0.3); border: 1px solid rgba(0,212,255,0.3);">
+            {{ domain }}
+          </div>
+
+          <div class="alert alert-warning small mb-3">
+            <i class="bi bi-shield-exclamation me-2"></i>
+            <strong>{{ platform_name | default('GhostPortal') }}</strong> is not responsible for content on external sites.
+            Verify this destination before proceeding.
+          </div>
+
+          <p class="text-inverse text-opacity-50 small mb-0">
+            Proceed only if you trust this destination.
+          </p>
+        </div>
+      </div>
+
+      <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-light flex-fill" onclick="window.history.back()">
+          <i class="bi bi-x-lg me-2"></i>Cancel
+        </button>
+        <a href="{{ redirect_url }}" class="btn btn-theme flex-fill" id="proceed-btn"
+           style="pointer-events:none; opacity:0.4;">
+          Proceed to {{ domain }} <i class="bi bi-arrow-right ms-2"></i>
+        </a>
+      </div>
+
+      <p class="text-center text-inverse text-opacity-50 small" id="countdown-text">
+        Proceed available in <span id="secs" class="fw-bold text-warning">5</span>s
+      </p>
+
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='hud/js/vendor.min.js') }}"></script>
+<script src="{{ url_for('static', filename='hud/js/app.min.js') }}"></script>
+<script>
+(function(){
+  var s = 5;
+  var el = document.getElementById('secs');
+  var btn = document.getElementById('proceed-btn');
+  var countdownText = document.getElementById('countdown-text');
+  var t = setInterval(function(){
+    s--;
+    el.textContent = s;
+    if (s <= 0) {
+      clearInterval(t);
+      btn.style.pointerEvents = '';
+      btn.style.opacity = '1';
+      countdownText.textContent = '';
+    }
+  }, 1000);
+})();
+</script>
+</body>
+</html>

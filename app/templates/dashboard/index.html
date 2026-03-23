@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div class="d-flex align-items-center mb-4">
+  <div>
+    <h1 class="page-header-title fw-bold mb-1">DASHBOARD</h1>
+    <div class="text-inverse text-opacity-50 small">analytics overview</div>
+  </div>
+  <div class="ms-auto">
+    <a href="{{ url_for('reports.new_report') }}" class="btn btn-theme">
+      <i class="bi bi-plus-lg me-1"></i>New Report
+    </a>
+  </div>
+</div>
+
+<!-- Stats Row -->
+<div class="row mb-3" role="region" aria-label="Statistics overview">
+
+  <div class="col-xl-2 col-lg-4 col-md-6 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex fw-bold small mb-3">
+          <span class="flex-1">TOTAL REPORTS</span>
+          <i class="bi bi-file-earmark-text text-theme fs-16px"></i>
+        </div>
+        <div class="row align-items-center mb-2">
+          <div class="col-7"><h3 class="mb-0">{{ stats.total_reports | default(0) }}</h3></div>
+          <div class="col-5">
+            <div class="progress h-5px rounded-pill bg-inverse bg-opacity-10">
+              <div class="progress-bar bg-theme rounded-pill" style="width:100%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="small text-inverse text-opacity-50">all time</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-lg-4 col-md-6 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex fw-bold small mb-3">
+          <span class="flex-1">OPEN / IN PROGRESS</span>
+          <i class="bi bi-unlock text-warning fs-16px"></i>
+        </div>
+        <div class="row align-items-center mb-2">
+          <div class="col-7"><h3 class="mb-0">{{ stats.open_reports | default(0) }}</h3></div>
+          <div class="col-5">
+            <div class="progress h-5px rounded-pill bg-inverse bg-opacity-10">
+              <div class="progress-bar bg-warning rounded-pill" style="width:{{ [((stats.open_reports | default(0)) / [stats.total_reports | default(1), 1] | max * 100) | int, 100] | min }}%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="small text-inverse text-opacity-50">active reports</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-lg-4 col-md-6 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex fw-bold small mb-3">
+          <span class="flex-1">RESOLVED</span>
+          <i class="bi bi-check-circle text-theme fs-16px"></i>
+        </div>
+        <div class="row align-items-center mb-2">
+          <div class="col-7"><h3 class="mb-0">{{ stats.resolved_reports | default(0) }}</h3></div>
+          <div class="col-5">
+            <div class="progress h-5px rounded-pill bg-inverse bg-opacity-10">
+              <div class="progress-bar bg-theme rounded-pill" style="width:{{ [((stats.resolved_reports | default(0)) / [stats.total_reports | default(1), 1] | max * 100) | int, 100] | min }}%"></div>
+            </div>
+          </div>
+        </div>
+        <div class="small text-inverse text-opacity-50">fixed vulnerabilities</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-lg-4 col-md-6 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex fw-bold small mb-3">
+          <span class="flex-1">TOTAL BOUNTY</span>
+          <i class="bi bi-currency-dollar text-theme fs-16px"></i>
+        </div>
+        <div class="row align-items-center mb-2">
+          <div class="col-12"><h3 class="mb-0" style="font-size:1.1rem;">{{ stats.total_bounty | default('$0.00') }}</h3></div>
+        </div>
+        <div class="small text-inverse text-opacity-50">earned</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-lg-4 col-md-6 mb-3">
+    <div class="card h-100 {% if stats.expiring_soon %}border-warning{% endif %}">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex fw-bold small mb-3">
+          <span class="flex-1">ACTIVE INVITES</span>
+          <i class="bi bi-link-45deg {% if stats.expiring_soon %}text-warning{% else %}text-theme{% endif %} fs-16px"></i>
+        </div>
+        <div class="row align-items-center mb-2">
+          <div class="col-7"><h3 class="mb-0">{{ stats.active_invites | default(0) }}</h3></div>
+          <div class="col-5">
+            {% if stats.expiring_soon %}
+            <span class="badge bg-warning text-dark small">{{ stats.expiring_soon }} expiring</span>
+            {% endif %}
+          </div>
+        </div>
+        <div class="small text-inverse text-opacity-50">active links</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-2 col-lg-4 col-md-6 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex fw-bold small mb-3">
+          <span class="flex-1">AVG RESPONSE</span>
+          <i class="bi bi-stopwatch text-theme fs-16px"></i>
+        </div>
+        <div class="row align-items-center mb-2">
+          <div class="col-12">
+            <h3 class="mb-0">
+              {% if stats.avg_response_days %}{{ stats.avg_response_days }}<small class="fs-14px ms-1 text-inverse text-opacity-50">days</small>{% else %}—{% endif %}
+            </h3>
+          </div>
+        </div>
+        <div class="small text-inverse text-opacity-50">security team response</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Charts Row 1 -->
+<div class="row mb-3" role="region" aria-label="Analytics charts">
+
+  <div class="col-xl-8 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold d-flex align-items-center">
+        <i class="bi bi-graph-up me-2 text-theme"></i>Submissions Over Time
+        <div class="ms-auto btn-group btn-group-sm" role="group" aria-label="Time range">
+          <button class="btn btn-outline-theme active" data-period="weekly">Weekly</button>
+          <button class="btn btn-outline-theme" data-period="monthly">Monthly</button>
+          <button class="btn btn-outline-theme" data-period="yearly">Yearly</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <canvas id="submissionsChart" aria-label="Submissions over time line chart" style="max-height:220px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-pie-chart me-2 text-theme"></i>Reports by Status
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center">
+        <canvas id="statusChart" aria-label="Reports by status donut chart" style="max-height:220px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Charts Row 2 -->
+<div class="row mb-3">
+
+  <div class="col-xl-4 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-bar-chart me-2 text-theme"></i>Reports by Severity
+      </div>
+      <div class="card-body">
+        <canvas id="severityChart" aria-label="Reports by severity bar chart" style="max-height:200px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-activity me-2 text-theme"></i>CVSS Score Distribution
+      </div>
+      <div class="card-body">
+        <canvas id="cvssChart" aria-label="CVSS score distribution histogram" style="max-height:200px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4 mb-3">
+    <div class="card h-100">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-currency-bitcoin me-2 text-theme"></i>Bounty by Month
+      </div>
+      <div class="card-body">
+        <canvas id="bountyChart" aria-label="Bounty by month bar chart" style="max-height:200px;"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Top CWEs -->
+<div class="row mb-3">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-bug me-2 text-theme"></i>Top 10 CWE Weaknesses
+      </div>
+      <div class="card-body">
+        <canvas id="cweChart" aria-label="Top 10 CWE weaknesses bar chart" style="max-height:200px;"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Follow-Up Radar -->
+<div class="card mb-3" role="region" aria-label="Follow-up radar">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-radar me-2 text-theme"></i>Follow-Up Radar
+  </div>
+
+  {% if followup_data %}
+  <div class="table-responsive">
+    <table class="table table-card table-hover mb-0" aria-label="Active invites follow-up status">
+      <thead class="table-dark">
+        <tr>
+          <th>Company</th>
+          <th>Report</th>
+          <th>Severity</th>
+          <th>Days Since Sent</th>
+          <th>Follow-Up Status</th>
+          <th>Last Activity</th>
+          <th>Health</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in followup_data %}
+        <tr>
+          <td class="fw-bold">{{ row.company_name or '—' }}</td>
+          <td>
+            <a href="{{ url_for('reports.view_report', report_uuid=row.report_id) }}" class="text-theme text-decoration-none">
+              <code>{{ row.display_id }}</code>
+            </a>
+          </td>
+          <td>
+            {% if row.severity == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+            {% elif row.severity == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+            {% elif row.severity == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+            {% elif row.severity == 'low' %}<span class="badge bg-info">LOW</span>
+            {% else %}<span class="badge bg-secondary">INFO</span>{% endif %}
+          </td>
+          <td>{{ row.days_since_sent }}</td>
+          <td>
+            <span class="badge {% if row.followup_30_sent_at %}bg-theme{% else %}bg-inverse bg-opacity-25{% endif %} me-1">30d</span>
+            <span class="badge {% if row.followup_60_sent_at %}bg-theme{% else %}bg-inverse bg-opacity-25{% endif %} me-1">60d</span>
+            <span class="badge {% if row.followup_90_sent_at %}bg-theme{% else %}bg-inverse bg-opacity-25{% endif %}">90d</span>
+          </td>
+          <td class="text-inverse text-opacity-50 small">{{ row.last_activity_at.strftime('%Y-%m-%d') if row.last_activity_at else '—' }}</td>
+          <td>
+            {% if row.health == 'green' %}
+            <span class="badge bg-theme"><i class="bi bi-circle-fill me-1" style="font-size:8px;"></i>Active</span>
+            {% elif row.health == 'amber' %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-circle-fill me-1" style="font-size:8px;"></i>Idle</span>
+            {% else %}
+            <span class="badge bg-danger"><i class="bi bi-circle-fill me-1" style="font-size:8px;"></i>Unresponsive</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="card-body text-center py-5">
+    <i class="bi bi-radar text-inverse text-opacity-25 mb-3" style="font-size:3rem; display:block;"></i>
+    <p class="text-inverse text-opacity-50 mb-3">No active invites. Send a report to get started.</p>
+    <a href="{{ url_for('reports.new_report') }}" class="btn btn-theme">
+      <i class="bi bi-plus-lg me-1"></i>New Report
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+  integrity="sha384-6LGkKN9c9R2mMEHVRMEPSFxnLlWqRF3gMRkHR2JCWTwLQ7fFgRmL1XXq0zq3fqF"
+  crossorigin="anonymous"></script>
+<script>
+  window.__CHART_DATA = {{ chart_data | tojson | safe }};
+</script>
+<script src="{{ url_for('static', filename='js/charts.js') }}" defer></script>
+{% endblock %}

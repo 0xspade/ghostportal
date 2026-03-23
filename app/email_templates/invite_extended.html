@@ -1,0 +1,13 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Invite Extended — {{ report.display_id }}{% endblock %}
+{% block body %}
+<h2>Portal Access Extended</h2>
+<p>Your access invite to vulnerability report <strong>{{ report.display_id }}</strong> has been extended.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Report</span><span class="meta-val">{{ report.display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">New Expiry</span><span class="meta-val" style="color:#00ff88;">{{ new_expiry.strftime('%Y-%m-%d') if new_expiry else 'N/A' }}</span></div>
+  <div class="meta-row"><span class="meta-key">Extended by</span><span class="meta-val">{{ extension_days }} days</span></div>
+</div>
+<a href="{{ portal_url }}" class="btn-cta">ACCESS PORTAL →</a>
+<p class="url-text">{{ portal_url }}</p>
+{% endblock %}

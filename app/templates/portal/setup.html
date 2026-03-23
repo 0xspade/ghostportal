@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portal Access Setup — {{ config.PLATFORM_NAME | default('GhostPortal') }}</title>
+  <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+  {% if hcaptcha_site_key %}
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+  {% endif %}
+</head>
+<body>
+<div id="app" class="app app-full-height app-without-header">
+  <div class="login">
+    <div class="login-content" style="max-width:520px;">
+
+      <div class="text-center mb-4">
+        <h1 class="fw-bold mb-1" style="font-size:1.8rem; letter-spacing:0.05em;">
+          {{ platform_name | default(config.PLATFORM_NAME) | default('GhostPortal') }}
+        </h1>
+        <p class="text-inverse text-opacity-50 small">Self-Hosted Bug Bounty Platform</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+          <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' if category == 'warning' else 'info' }} mb-3" role="alert">
+            {{ message }}
+          </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <!-- Platform identity banner -->
+      <div class="alert alert-info mb-3 small">
+        <i class="bi bi-info-circle me-2"></i>
+        This is a legitimate vulnerability disclosure from an independent security researcher.
+        This link grants you scoped access to view and respond to a specific report.
+      </div>
+
+      {% if report %}
+      <!-- Report summary card -->
+      <div class="card mb-3 border-{% if report.severity == 'critical' %}danger{% elif report.severity == 'high' %}warning{% elif report.severity == 'medium' %}primary{% else %}info{% endif %} border-opacity-50">
+        <div class="card-arrow">
+          <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+          <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+        </div>
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            {% if report.severity == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+            {% elif report.severity == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+            {% elif report.severity == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+            {% elif report.severity == 'low' %}<span class="badge bg-info">LOW</span>
+            {% elif report.severity %}<span class="badge bg-secondary">{{ report.severity|upper }}</span>
+            {% else %}<span class="badge bg-secondary">UNRATED</span>{% endif %}
+            <code class="text-theme small">{{ report.display_id }}</code>
+          </div>
+          {% if report.cwe_id %}
+          <div class="small text-inverse text-opacity-75 mb-1">
+            <strong>CWE:</strong> CWE-{{ report.cwe_id }}{% if report.cwe_name %}: {{ report.cwe_name }}{% endif %}
+          </div>
+          {% endif %}
+          {% if report.cvss_score %}
+          <div class="small text-inverse text-opacity-75 mb-1">
+            <strong>CVSS 4.0:</strong> {{ '%.1f'|format(report.cvss_score) }}
+          </div>
+          {% endif %}
+          {% if report.target_asset %}
+          <div class="small text-inverse text-opacity-75">
+            <strong>Target:</strong> {{ report.target_asset }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card mb-3">
+        <div class="card-arrow">
+          <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+          <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+        </div>
+        <div class="card-header fw-bold">
+          <i class="bi bi-shield-check me-2 text-theme"></i>Complete Portal Setup
+        </div>
+        <div class="card-body">
+          <form method="POST" action="{{ url_for('portal.portal_setup', raw_invite_token=raw_token) }}" id="setup-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <!-- Honeypot -->
+            <div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true">
+              <input type="text" name="website" tabindex="-1" autocomplete="off">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">Company / Organization Name <span class="text-danger">*</span></label>
+              <input type="text" name="company_name" class="form-control form-control-lg bg-inverse bg-opacity-5"
+                     required maxlength="200" placeholder="Acme Corp Security Team">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">
+                Verification Code <span class="text-danger">*</span>
+                <span class="text-inverse text-opacity-50 fw-normal small ms-1">(from your invitation email)</span>
+              </label>
+              <input type="text" name="otp" id="otp-input"
+                     class="form-control form-control-lg bg-inverse bg-opacity-5"
+                     required
+                     maxlength="{{ otp_length + (otp_length // 5 - 1) * 2 + 2 }}"
+                     autocomplete="one-time-code"
+                     spellcheck="false"
+                     autocorrect="off"
+                     autocapitalize="off"
+                     placeholder="{{ 'X' * 5 + '  ' + 'X' * 5 + '  ' + 'X' * 5 + '  ' + 'X' * 5 }}"
+                     style="font-family: 'JetBrains Mono', monospace; letter-spacing: 0.15em;">
+              <div class="form-text text-inverse text-opacity-50 small">
+                Enter the {{ otp_length }}-character code shown in the invitation email body.
+              </div>
+            </div>
+
+            {% if hcaptcha_site_key %}
+            <div class="mb-3 d-flex justify-content-center">
+              <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}" data-theme="dark"></div>
+            </div>
+            {% endif %}
+
+            <div class="small text-inverse text-opacity-50 mb-3">
+              By accessing this portal, you agree to our
+              <a href="{{ url_for('legal.terms') }}" class="text-theme text-decoration-none">Terms of Service</a> and
+              <a href="{{ url_for('legal.privacy') }}" class="text-theme text-decoration-none">Privacy Policy</a>.
+              If you did not expect this report, do not proceed — contact
+              <a href="mailto:{{ operator_email }}" class="text-theme text-decoration-none">{{ operator_email }}</a> to verify.
+            </div>
+
+            <button type="submit" class="btn btn-theme d-block w-100 fw-bold">
+              <i class="bi bi-shield-check me-2"></i>Access Vulnerability Report
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='hud/js/vendor.min.js') }}"></script>
+<script src="{{ url_for('static', filename='hud/js/app.min.js') }}"></script>
+<script>
+// OTP input: strip non-alphanumeric, enforce length, disable submit until valid
+(function() {
+  const OTP_LEN = {{ otp_length }};
+  const input = document.getElementById('otp-input');
+  const submitBtn = document.querySelector('#setup-form button[type="submit"]');
+
+  function updateSubmitState(rawLen) {
+    submitBtn.disabled = rawLen < OTP_LEN;
+  }
+
+  input.addEventListener('input', function() {
+    // Strip anything that isn't alphanumeric
+    let raw = input.value.replace(/[^A-Za-z0-9]/g, '').slice(0, OTP_LEN);
+    // Display with spaces every 5 chars (visual only)
+    let display = raw.match(/.{1,5}/g)?.join('  ') || '';
+    input.value = display;
+    updateSubmitState(raw.length);
+  });
+
+  // Before submit: strip the formatting spaces so only raw OTP is sent
+  document.getElementById('setup-form').addEventListener('submit', function() {
+    input.value = input.value.replace(/[^A-Za-z0-9]/g, '');
+  });
+
+  updateSubmitState(0);
+})();
+</script>
+</body>
+</html>

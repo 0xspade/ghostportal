@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>500 — Internal Error</title>
+  <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+</head>
+<body>
+<div id="app" class="app app-full-height app-without-header">
+  <div class="error-page">
+    <div class="error-page-content text-center">
+      <div class="error-code text-theme">500</div>
+      <h2 class="fw-bold mb-2">INTERNAL ERROR</h2>
+      <p class="text-inverse text-opacity-50 mb-4">An unexpected error occurred. The incident has been logged.</p>
+      <a href="{{ url_for('dashboard.index') }}" class="btn btn-theme">
+        <i class="bi bi-speedometer2 me-2"></i>Dashboard
+      </a>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='hud/js/vendor.min.js') }}"></script>
+<script src="{{ url_for('static', filename='hud/js/app.min.js') }}"></script>
+</body>
+</html>

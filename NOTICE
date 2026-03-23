@@ -1,0 +1,25 @@
+GhostPortal — Self-Hosted External Bug Bounty Reporting Platform
+Project Alias: Project-Apocalypse
+
+Copyright (C) 2026 Spade
+
+THE AUTHOR DOES NOT SELL THIS SOFTWARE.
+This software is not a commercial product. It is provided as a free, open-source
+tool for the security research community.
+
+This software is made available FREE OF CHARGE under the GNU Affero General
+Public License v3.0 (AGPL-3.0).
+
+Third-party libraries used by this project retain their original licenses.
+See requirements.txt and the /licenses/ directory for individual attributions.
+
+AGPL-3.0 Summary:
+  * You may use, copy, modify, and distribute this software
+  * You may use it for personal, academic, or commercial purposes
+  * If you distribute modified versions, you must release source under AGPL-3.0
+  * If you run modified versions as a network service, you must provide source
+  * You may not remove or alter copyright notices
+  * You may not sublicense under non-copyleft terms
+  * You may not sell this software as a proprietary product
+
+For the full license text, see the LICENSE file in this repository.

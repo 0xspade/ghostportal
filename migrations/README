@@ -1,0 +1,5 @@
+Generic single-database configuration with Flask-Migrate.
+
+Run `flask db upgrade` to apply all migrations.
+Run `flask db migrate -m "description"` to generate a new migration after model changes.
+Run `flask db downgrade` to roll back one migration.

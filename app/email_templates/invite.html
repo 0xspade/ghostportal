@@ -1,0 +1,69 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Security Vulnerability Report — {{ program_name }} | Severity: {{ severity | upper }}{% endblock %}
+
+{% block body %}
+
+<!-- Platform identity banner -->
+<div class="platform-banner">
+┌──────────────────────────────────────────────────────┐<br>
+║  {{ platform_name }} — Self-Hosted Bug Bounty Platform<br>
+║  Operated by: {{ owner_email }}<br>
+║  This is a legitimate vulnerability disclosure from<br>
+║  an independent security researcher.<br>
+└──────────────────────────────────────────────────────┘
+</div>
+
+<p>
+  You are receiving this because <strong>{{ owner_email }}</strong> has identified a potential
+  security vulnerability in your systems or product and wishes to disclose it responsibly.
+</p>
+
+<!-- Vulnerability summary card -->
+<div class="severity-card">
+  <div>
+    <span class="severity-label severity-{{ severity | lower }}">{{ severity | upper }}</span>
+  </div>
+  <div class="meta-row"><span class="meta-key">Report ID:</span> <span class="meta-val">{{ display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">Program:</span> <span class="meta-val">{{ program_name }}</span></div>
+  {% if target_asset %}
+  <div class="meta-row"><span class="meta-key">Asset:</span> <span class="meta-val">{{ target_asset }}</span></div>
+  {% endif %}
+  {% if cwe_id %}
+  <div class="meta-row"><span class="meta-key">CWE:</span> <span class="meta-val">CWE-{{ cwe_id }}{% if cwe_name %} — {{ cwe_name }}{% endif %}</span></div>
+  {% endif %}
+  {% if cvss_score %}
+  <div class="meta-row"><span class="meta-key">CVSS 4.0:</span> <span class="meta-val">{{ cvss_score }}{% if cvss_vector %} · {{ cvss_vector }}{% endif %}</span></div>
+  {% endif %}
+</div>
+
+<h2>About This Platform</h2>
+
+<p>
+  GhostPortal is a self-hosted vulnerability reporting platform. The link below grants you access
+  to view the full report details, respond to the researcher, and set a bounty if applicable.
+  This link is unique to you and expires in <strong>{{ invite_expiry_days }} days</strong>.
+</p>
+
+<a href="{{ portal_url }}" class="btn-cta">VIEW VULNERABILITY REPORT →</a>
+<p class="url-text">{{ portal_url }}</p>
+
+<div class="notice-box">
+  <p class="notice-text">
+    ⚠ Security Notice: This link is for initial portal setup only.
+    Subsequent access uses your registered email address.
+    If you did not expect this report, you may ignore this email.
+    Contact {{ owner_email }} to verify authenticity.
+  </p>
+</div>
+
+<div class="meta-row" style="margin-top: 16px;">
+  <span class="meta-key">Expires:</span>
+  <span class="meta-val">{{ expires_at }}</span>
+</div>
+
+<p style="font-size: 11px; color: #445566; margin-top: 16px;">
+  To unsubscribe from future reports regarding this asset, reply with UNSUBSCRIBE.
+  Sender: {{ sender_email }}
+</p>
+
+{% endblock %}

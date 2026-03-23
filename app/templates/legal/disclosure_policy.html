@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Responsible Disclosure Policy — {{ platform_name }}{% endblock %}
+{% block content %}
+<div class="legal-page">
+  <div class="legal-header">
+    <h1>Responsible Disclosure Policy</h1>
+    <p class="text-muted">{{ platform_name }} · Operated by {{ operator_name }}</p>
+  </div>
+
+  <div class="panel legal-content">
+    <h2>Our Commitment</h2>
+    <p>We believe that responsible security research benefits everyone. If you have discovered a security vulnerability in our systems, we encourage you to disclose it to us responsibly so that we can fix it and protect our users.</p>
+
+    <h2>Disclosure Timeline</h2>
+    <ul>
+      <li>We will acknowledge your report within <strong>72 hours</strong> of submission.</li>
+      <li>We will provide a status update within <strong>7 days</strong>.</li>
+      <li>We aim to resolve critical vulnerabilities within <strong>30 days</strong> and high-severity issues within <strong>60 days</strong>.</li>
+      <li>We will notify you when the vulnerability has been resolved.</li>
+    </ul>
+
+    <h2>Scope</h2>
+    <p>In Scope:</p>
+    <ul>
+      <li>Security vulnerabilities in systems operated by {{ operator_name }}</li>
+      <li>Authentication bypasses</li>
+      <li>Remote code execution</li>
+      <li>SQL injection</li>
+      <li>Cross-site scripting (XSS)</li>
+      <li>Privilege escalation</li>
+      <li>Sensitive data exposure</li>
+    </ul>
+    <p>Out of Scope:</p>
+    <ul>
+      <li>Social engineering attacks</li>
+      <li>Physical attacks</li>
+      <li>Denial of service attacks</li>
+      <li>Spam or phishing campaigns</li>
+      <li>Automated scanning without prior authorization</li>
+    </ul>
+
+    <h2>Safe Harbor</h2>
+    <p>We will not pursue legal action against researchers who:</p>
+    <ul>
+      <li>Disclose vulnerabilities in good faith following this policy</li>
+      <li>Do not access, modify, or delete production data</li>
+      <li>Do not perform actions that degrade service availability</li>
+      <li>Report vulnerabilities promptly and do not disclose them publicly before resolution</li>
+    </ul>
+
+    <h2>What We Ask of You</h2>
+    <ul>
+      <li>Give us reasonable time to respond and fix the issue before public disclosure</li>
+      <li>Do not exploit the vulnerability beyond what is necessary to demonstrate it</li>
+      <li>Do not access other users' data</li>
+      <li>Keep the vulnerability confidential until we provide a fix</li>
+    </ul>
+
+    <h2>How to Report</h2>
+    <p>Submit vulnerability reports to: <a href="mailto:{{ operator_email }}">{{ operator_email }}</a></p>
+    <p>Please include:</p>
+    <ul>
+      <li>Description of the vulnerability</li>
+      <li>Steps to reproduce</li>
+      <li>Proof of concept (if applicable)</li>
+      <li>Potential impact</li>
+    </ul>
+
+    <h2>Researcher Recognition</h2>
+    <p>We are grateful for the security community's efforts. Researchers who responsibly disclose vulnerabilities may be credited in our security advisories with their consent.</p>
+
+    <h2>Contact</h2>
+    <p>{{ operator_name }}<br>
+    <a href="mailto:{{ operator_email }}">{{ operator_email }}</a></p>
+  </div>
+</div>
+{% endblock %}

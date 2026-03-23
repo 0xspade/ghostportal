@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Terms of Service — {{ platform_name }}{% endblock %}
+{% block content %}
+<div class="legal-page">
+  <div class="legal-header">
+    <h1>Terms of Service</h1>
+    <p class="text-muted">{{ platform_name }} · Version {{ policy_version }} · Last updated {{ policy_last_updated }}</p>
+  </div>
+
+  <div class="panel legal-content">
+    <h2>1. Platform Description</h2>
+    <p>{{ platform_name }} is a self-hosted vulnerability disclosure platform operated by <strong>{{ operator_name }}</strong> for the purpose of responsible security research and coordinated vulnerability disclosure. It is not a public platform — access is by explicit invite only.</p>
+
+    <h2>2. Acceptable Use</h2>
+    <p><strong>Permitted:</strong> Submitting vulnerability reports, communicating with researchers, setting bounties in good faith.</p>
+    <p><strong>Prohibited:</strong> Unauthorized access attempts, sharing invite links, reverse engineering the platform, submitting false or malicious reports, using the platform for any purpose other than security disclosure.</p>
+
+    <h2>3. User Roles &amp; Access Scope</h2>
+    <ul>
+      <li><strong>Owner:</strong> Full platform access. Single researcher account.</li>
+      <li><strong>Security Team Member:</strong> Access limited to reports they are explicitly invited to. Multi-report access permitted only across reports where their email is the invited contact.</li>
+    </ul>
+
+    <h2>4. Data Processing</h2>
+    <p>We collect: email address, IP address, User-Agent string, report content, and file attachments. This data is used solely for platform operation, security audit, and coordinated disclosure workflow. Only the platform operator and invited security team members (scoped to their reports) may access this data.</p>
+    <p>Retention: data retained for the duration of the disclosure process plus one (1) year for audit purposes.</p>
+
+    <h2>5. Invite Links</h2>
+    <p>Invite links are single-use for initial portal setup; subsequent access is via magic link login. Invite links expire after the configured period (default 90 days). The platform operator may revoke access at any time.</p>
+
+    <h2>6. Intellectual Property</h2>
+    <p>Vulnerability reports submitted by the researcher remain the researcher's intellectual property. Security team replies are considered responses to the disclosure and may be referenced in public advisories with identifying information redacted unless the security team consents.</p>
+
+    <h2>7. No Warranty</h2>
+    <p>This platform is provided as-is for security research purposes. The operator makes no representations about bug bounty payment obligations — those are solely between researcher and security teams.</p>
+
+    <h2>8. Governing Law</h2>
+    <p>These Terms are governed by the laws of <strong>{{ operator_country }}</strong>. Disputes are subject to the jurisdiction of courts in {{ operator_country }}. International users accessing the platform consent to this jurisdiction.</p>
+
+    <h2>9. Contact</h2>
+    <p>For legal inquiries: <a href="mailto:{{ operator_email }}">{{ operator_email }}</a></p>
+  </div>
+</div>
+{% endblock %}

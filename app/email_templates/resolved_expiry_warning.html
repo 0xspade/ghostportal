@@ -1,0 +1,15 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Portal Access Expiring — {{ days_remaining }} Day{{ 's' if days_remaining != 1 }} Remaining{% endblock %}
+{% block body %}
+<h2>Portal Access Expiring Soon</h2>
+<p>All reports you were invited to review have been resolved. Your portal access will expire in <strong>{{ days_remaining }} day{{ 's' if days_remaining != 1 }}</strong>.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Access Expiry</span><span class="meta-val">{{ expiry_date.strftime('%Y-%m-%d') if expiry_date else 'Soon' }}</span></div>
+  <div class="meta-row"><span class="meta-key">Days Remaining</span><span class="meta-val" style="{{ 'color:#ff4040;' if days_remaining <= 1 else 'color:#ffaa00;' }}">{{ days_remaining }}</span></div>
+</div>
+<p>After this date, you will no longer be able to access the portal. If you have pending questions or follow-ups, please submit them before expiry.</p>
+{% if portal_url %}
+<a href="{{ portal_url }}" class="btn-cta">ACCESS PORTAL →</a>
+{% endif %}
+<p>To continue communication, contact <a href="mailto:{{ operator_email }}" style="color:#00d4ff;">{{ operator_email }}</a>.</p>
+{% endblock %}

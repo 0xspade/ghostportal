@@ -1,0 +1,21 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Field Edit Proposal — {{ report.display_id }}: {{ field_name }}{% endblock %}
+{% block body %}
+<h2>Field Edit Proposal</h2>
+<p>A security team member has proposed a correction to a field in report <strong>{{ report.display_id }}</strong>. Your review is required.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Report</span><span class="meta-val">{{ report.display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">Proposed by</span><span class="meta-val">{{ company_name or 'Security Team' }}</span></div>
+  <div class="meta-row"><span class="meta-key">Field</span><span class="meta-val"><code>{{ field_name }}</code></span></div>
+  <div class="meta-row"><span class="meta-key">Current</span><span class="meta-val">{{ old_value }}</span></div>
+  <div class="meta-row"><span class="meta-key">Proposed</span><span class="meta-val" style="color:#00d4ff;">{{ proposed_value }}</span></div>
+  {% if reason %}
+  <div style="margin-top:8px; border-top:1px solid #1e2d3d; padding-top:8px;">
+    <div class="meta-row"><span class="meta-key">Reason</span></div>
+    <p style="color:#e0e6f0; font-size:12px; margin:4px 0;">{{ reason }}</p>
+  </div>
+  {% endif %}
+</div>
+<div class="notice-box"><p class="notice-text">Review and accept or reject this proposal from your report detail page.</p></div>
+<a href="{{ review_url }}" class="btn-cta">REVIEW PROPOSAL →</a>
+{% endblock %}

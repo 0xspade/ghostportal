@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Reports — {{ platform_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div>
+    <h1 class="page-header-title fw-bold mb-0">VULNERABILITY REPORTS</h1>
+  </div>
+  <div class="ms-auto">
+    <a href="{{ url_for('reports.new_report') }}" class="btn btn-theme">
+      <i class="bi bi-plus-lg me-1"></i>New Report
+    </a>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-body">
+    <form method="GET" action="{{ url_for('reports.list_reports') }}">
+      <div class="row g-2 align-items-end">
+        <div class="col-lg-4">
+          <label class="form-label fw-bold small mb-1">Search</label>
+          <input type="text" name="q" value="{{ request.args.get('q', '') }}"
+                 placeholder="Search title, description..." class="form-control">
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label fw-bold small mb-1">Severity</label>
+          <select name="severity" class="form-select">
+            <option value="">All Severities</option>
+            {% for s in ['critical','high','medium','low','informational'] %}
+            <option value="{{ s }}" {{ 'selected' if request.args.get('severity') == s }}>{{ s|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label fw-bold small mb-1">Status</label>
+          <select name="status" class="form-select">
+            <option value="">All Statuses</option>
+            {% for st in ['draft','submitted','triaged','duplicate','informative','resolved','wont_fix','not_applicable'] %}
+            <option value="{{ st }}" {{ 'selected' if request.args.get('status') == st }}>{{ st|replace('_',' ')|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-lg-2">
+          <label class="form-label fw-bold small mb-1">Sort</label>
+          <select name="sort" class="form-select">
+            <option value="newest" {{ 'selected' if request.args.get('sort','newest') == 'newest' }}>Newest First</option>
+            <option value="oldest" {{ 'selected' if request.args.get('sort') == 'oldest' }}>Oldest First</option>
+            <option value="severity" {{ 'selected' if request.args.get('sort') == 'severity' }}>By Severity</option>
+          </select>
+        </div>
+        <div class="col-lg-2 d-flex gap-2">
+          <button type="submit" class="btn btn-theme flex-1">
+            <i class="bi bi-search me-1"></i>Filter
+          </button>
+          <a href="{{ url_for('reports.list_reports') }}" class="btn btn-light">Clear</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="text-inverse text-opacity-50 small mb-2">
+  {{ pagination.total }} report{{ 's' if pagination.total != 1 }}
+</div>
+
+{% if reports %}
+<div class="card mb-3">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-card table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>ID</th>
+          <th>Title</th>
+          <th>Program</th>
+          <th>Severity</th>
+          <th>Status</th>
+          <th>CVSS</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reports %}
+        <tr>
+          <td><code class="text-theme small">{{ r.display_id }}</code></td>
+          <td>
+            <a href="{{ url_for('reports.view_report', report_uuid=r.id) }}" class="text-inverse text-decoration-none fw-bold">
+              {{ r.title|truncate(60) }}
+            </a>
+            {% if r.ai_generated %}
+            <span class="badge bg-info ms-1 small" title="AI-generated draft">AI</span>
+            {% endif %}
+          </td>
+          <td class="text-inverse text-opacity-50 small">{{ r.program_name or '—' }}</td>
+          <td>
+            {% if r.severity == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+            {% elif r.severity == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+            {% elif r.severity == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+            {% elif r.severity == 'low' %}<span class="badge bg-info">LOW</span>
+            {% elif r.severity == 'informational' %}<span class="badge bg-secondary">INFO</span>
+            {% else %}<span class="text-inverse text-opacity-50">—</span>{% endif %}
+          </td>
+          <td>
+            {% set s = r.status %}
+            {% if s == 'draft' %}<span class="badge bg-secondary">DRAFT</span>
+            {% elif s == 'submitted' %}<span class="badge bg-primary">SUBMITTED</span>
+            {% elif s == 'triaged' %}<span class="badge bg-warning text-dark">TRIAGED</span>
+            {% elif s == 'duplicate' %}<span class="badge bg-secondary">DUPLICATE</span>
+            {% elif s == 'informative' %}<span class="badge bg-info">INFORMATIVE</span>
+            {% elif s == 'resolved' %}<span class="badge bg-theme">RESOLVED</span>
+            {% elif s == 'wont_fix' %}<span class="badge bg-danger">WON'T FIX</span>
+            {% elif s == 'not_applicable' %}<span class="badge bg-secondary">NOT APPLICABLE</span>
+            {% else %}<span class="badge bg-secondary">{{ s|upper }}</span>{% endif %}
+          </td>
+          <td>
+            {% if r.cvss_score %}
+            <span class="fw-bold {% if r.cvss_score >= 9.0 %}text-danger{% elif r.cvss_score >= 7.0 %}text-warning{% elif r.cvss_score >= 4.0 %}text-primary{% else %}text-info{% endif %}">
+              {{ '%.1f'|format(r.cvss_score) }}
+            </span>
+            {% else %}<span class="text-inverse text-opacity-25">—</span>{% endif %}
+          </td>
+          <td class="text-inverse text-opacity-50 small" title="{{ r.created_at.isoformat() if r.created_at }}">
+            {{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}
+          </td>
+          <td>
+            <a href="{{ url_for('reports.view_report', report_uuid=r.id) }}" class="btn btn-outline-theme btn-sm">View</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if pagination.pages > 1 %}
+<nav aria-label="Reports pagination">
+  <div class="d-flex align-items-center gap-2">
+    {% if pagination.has_prev %}
+    <a href="{{ url_for('reports.list_reports', page=pagination.prev_num, **request.args) }}" class="btn btn-outline-theme btn-sm">
+      <i class="bi bi-chevron-left"></i> Prev
+    </a>
+    {% endif %}
+    <span class="text-inverse text-opacity-50 small mx-2">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+    <a href="{{ url_for('reports.list_reports', page=pagination.next_num, **request.args) }}" class="btn btn-outline-theme btn-sm">
+      Next <i class="bi bi-chevron-right"></i>
+    </a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="card">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-body text-center py-5">
+    <i class="bi bi-clipboard-x text-inverse text-opacity-25 mb-3" style="font-size:3rem; display:block;"></i>
+    <p class="text-inverse text-opacity-50 mb-3">No reports found.</p>
+    <a href="{{ url_for('reports.new_report') }}" class="btn btn-theme">
+      <i class="bi bi-plus-lg me-1"></i>Create Your First Report
+    </a>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

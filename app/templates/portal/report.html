@@ -1,0 +1,1268 @@
+{% extends "base.html" %}
+{% block title %}{{ report.display_id }} — Portal — {{ platform_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Ensure modals render above HUD admin loading overlays (Pace.js ~2000) */
+#editModal     { z-index: 9050 !important; }
+#ext-link-modal { z-index: 9050 !important; }
+.modal-backdrop { z-index: 9040 !important; }
+
+/* Markdown rendered content */
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+}
+.markdown-content p:last-child { margin-bottom: 0; }
+.markdown-content pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Severity color helpers ── #}
+{% set sev_class = {
+  'critical': 'danger', 'high': 'warning', 'medium': 'primary',
+  'low': 'info', 'informational': 'secondary'
+}.get(report.severity, 'secondary') %}
+{% set sev_text_class = 'text-dark' if report.severity in ('high',) else '' %}
+
+{# ── Top navigation bar ── #}
+<div class="d-flex align-items-center justify-content-between mb-3 gap-2 flex-wrap">
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('portal.dashboard') }}" class="btn btn-sm btn-light">
+      <i class="bi bi-arrow-left me-1"></i>Dashboard
+    </a>
+    <code class="text-theme small px-2 py-1 bg-inverse bg-opacity-5 rounded">{{ report.display_id }}</code>
+    {% if report.program_name %}
+    <span class="text-inverse text-opacity-50 small d-none d-sm-inline">{{ report.program_name }}</span>
+    {% endif %}
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-inverse text-opacity-50 small" id="portal-session-countdown"></span>
+    <button onclick="refreshPortalSession()" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
+  </div>
+</div>
+
+{# ── Closed Report Notification Banner ── #}
+{% if report.status in ('duplicate', 'informative', 'resolved', 'wont_fix', 'not_applicable') %}
+{% set _status_labels = {'duplicate': 'Duplicate', 'informative': 'Informative', 'resolved': 'Resolved', 'wont_fix': "Won't Fix", 'not_applicable': 'Not Applicable'} %}
+<div class="alert mb-3 py-3 border-0 d-flex align-items-start gap-3"
+     style="background:rgba(255,170,0,0.08); border-left:3px solid #ffaa00 !important; border-radius:6px;">
+  <i class="bi bi-lock-fill text-warning flex-shrink-0 mt-1" style="font-size:1.1rem;"></i>
+  <div>
+    <div class="fw-bold text-warning mb-1" style="font-size:0.95rem;">
+      Report Closed &mdash; {{ _status_labels.get(report.status, report.status|title) }}
+    </div>
+    <div class="small text-inverse text-opacity-75">
+      This report has been marked as
+      <strong>{{ _status_labels.get(report.status, report.status|upper) }}</strong>.
+      {% if resolved_expiry_at %}
+        Your portal access for this report is scheduled to expire on
+        <strong>{{ resolved_expiry_at.strftime('%Y-%m-%d') }}</strong>
+        ({{ resolved_expiry_days }} days after resolution).
+      {% else %}
+        Your portal access will expire <strong>{{ resolved_expiry_days }} days</strong>
+        after all your assigned reports are resolved.
+      {% endif %}
+      Access remains active if the report is reopened or further activity occurs.
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ── Two-column layout ── #}
+<div class="row g-3">
+
+  {# ════ LEFT COLUMN — Report Content ════ #}
+  <div class="col-lg-8">
+
+    {# ── Report Header Card ── #}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-body">
+        {# Title row #}
+        <div class="d-flex align-items-start gap-2 mb-3">
+          <span class="badge bg-{{ sev_class }} {{ sev_text_class }} flex-shrink-0 mt-1">
+            {{ report.severity|upper if report.severity else 'UNRATED' }}
+          </span>
+          <h1 class="fw-bold mb-0 flex-1" style="font-size:1.3rem; line-height:1.4;">{{ report.title }}</h1>
+          <button class="btn btn-sm btn-outline-secondary flex-shrink-0" title="Propose title correction"
+                  data-bs-toggle="modal" data-bs-target="#editModal"
+                  data-field="title" data-label="Title"
+                  data-current="{{ report.title }}" data-type="text">
+            <i class="bi bi-pencil"></i>
+          </button>
+        </div>
+
+        {# Metadata grid #}
+        <div class="row g-2 small">
+          {# Status #}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Status</div>
+            {% set s = report.status %}
+            {% if s == 'submitted' %}<span class="badge bg-primary">SUBMITTED</span>
+            {% elif s == 'triaged' %}<span class="badge bg-warning text-dark">TRIAGED</span>
+            {% elif s == 'duplicate' %}<span class="badge bg-secondary">DUPLICATE</span>
+            {% elif s == 'informative' %}<span class="badge bg-info">INFORMATIVE</span>
+            {% elif s == 'resolved' %}<span class="badge bg-theme">RESOLVED</span>
+            {% elif s == 'wont_fix' %}<span class="badge bg-danger">WON'T FIX</span>
+            {% elif s == 'not_applicable' %}<span class="badge bg-secondary">NOT APPLICABLE</span>
+            {% else %}<span class="badge bg-secondary">{{ s|upper }}</span>{% endif %}
+          </div>
+
+          {# Severity with pencil #}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Severity
+              <button class="btn btn-link btn-sm p-0 ms-1 text-inverse text-opacity-50" title="Propose severity correction"
+                      data-bs-toggle="modal" data-bs-target="#editModal"
+                      data-field="severity" data-label="Severity"
+                      data-current="{{ report.severity or '' }}" data-type="select"
+                      data-options="critical,high,medium,low,informational">
+                <i class="bi bi-pencil" style="font-size:0.65rem;"></i>
+              </button>
+            </div>
+            <span class="badge bg-{{ sev_class }} {{ sev_text_class }}">{{ report.severity|upper if report.severity else '—' }}</span>
+          </div>
+
+          {# CVSS with pencil #}
+          {% if report.cvss_score or report.cvss_vector %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">CVSS 4.0
+              <button class="btn btn-link btn-sm p-0 ms-1 text-inverse text-opacity-50" title="Propose CVSS correction"
+                      data-bs-toggle="modal" data-bs-target="#editModal"
+                      data-field="cvss_score" data-label="CVSS Score"
+                      data-current="{{ report.cvss_score|float if report.cvss_score else '' }}" data-type="number">
+                <i class="bi bi-pencil" style="font-size:0.65rem;"></i>
+              </button>
+            </div>
+            {% if report.cvss_score %}
+            <span class="fw-bold {% if report.cvss_score|float >= 9.0 %}text-danger{% elif report.cvss_score|float >= 7.0 %}text-warning{% elif report.cvss_score|float >= 4.0 %}text-primary{% else %}text-info{% endif %}">
+              {{ '%.1f'|format(report.cvss_score|float) }}
+            </span>
+            {% endif %}
+            {% if report.cvss_vector %}
+            <div class="d-flex align-items-center gap-1 mt-1">
+              <code class="text-inverse text-opacity-50" style="font-size:0.65rem; word-break:break-all;">{{ report.cvss_vector }}</code>
+              <button class="btn btn-link btn-sm p-0 text-inverse text-opacity-50" title="Propose CVSS vector correction"
+                      data-bs-toggle="modal" data-bs-target="#editModal"
+                      data-field="cvss_vector" data-label="CVSS Vector"
+                      data-current="{{ report.cvss_vector }}" data-type="text">
+                <i class="bi bi-pencil" style="font-size:0.65rem;"></i>
+              </button>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          {# CWE with pencil #}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">CWE Weakness
+              <button class="btn btn-link btn-sm p-0 ms-1 text-inverse text-opacity-50" title="Propose CWE correction"
+                      data-bs-toggle="modal" data-bs-target="#editModal"
+                      data-field="cwe_id" data-label="CWE ID"
+                      data-current="{{ report.cwe_id or '' }}" data-type="number">
+                <i class="bi bi-pencil" style="font-size:0.65rem;"></i>
+              </button>
+            </div>
+            {% if report.cwe_id %}
+            <span class="small">CWE-{{ report.cwe_id }}{% if report.cwe_name %}: {{ report.cwe_name }}{% endif %}</span>
+            {% else %}
+            <span class="text-inverse text-opacity-25 small">Not set</span>
+            {% endif %}
+          </div>
+
+          {# Target Asset (read-only — not editable by security team) #}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Target Asset</div>
+            {% if report.target_asset %}
+            <code class="small">{{ report.target_asset }}</code>
+            {% else %}
+            <span class="text-inverse text-opacity-25 small">Not set</span>
+            {% endif %}
+          </div>
+
+          {# Bounty status (read-only in header) #}
+          {% if report.bounty_amount %}
+          <div class="col-sm-6 col-lg-4">
+            <div class="text-inverse text-opacity-50 mb-1">Bounty</div>
+            <span class="fw-bold text-theme">{{ report.bounty_amount }} {{ report.bounty_currency or 'USD' }}</span>
+            {% if payment and payment.status == 'completed' %}
+            <span class="badge bg-theme ms-1">CONFIRMED</span>
+            {% elif payment and payment.status == 'processing' %}
+            <span class="badge bg-warning text-dark ms-1">SENT</span>
+            {% elif payment %}
+            <span class="badge bg-info text-dark ms-1">PENDING</span>
+            {% elif report.bounty_paid_at %}
+            <span class="badge bg-theme ms-1">RECEIVED</span>
+            {% else %}
+            <span class="badge bg-secondary ms-1">SET</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+
+        {# Tags #}
+        {% if report.tags %}
+        <div class="mt-3 d-flex flex-wrap gap-1">
+          {% for tag in report.tags %}
+          <span class="badge bg-inverse bg-opacity-25 text-inverse border border-theme border-opacity-25">{{ tag }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# Pending field edit proposals notice #}
+        {% if pending_count > 0 %}
+        <div class="alert alert-warning small mb-0 mt-3 py-2">
+          <i class="bi bi-hourglass-split me-1"></i>
+          You have <strong>{{ pending_count }}</strong> pending field correction proposal{{ 's' if pending_count > 1 }} awaiting owner review.
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Lifecycle Timeline ── #}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-diagram-3 me-2 text-theme"></i>Lifecycle Timeline
+      </div>
+      <div class="card-body">
+        {% set _terminal = ['duplicate','informative','wont_fix','not_applicable'] %}
+        {% if report.status in _terminal %}
+          {% set _steps = [
+            ('submitted', 'Submitted', report.submitted_at),
+            (report.status, report.status|replace('_',' ')|title, None),
+          ] %}
+        {% else %}
+          {% set _steps = [
+            ('submitted', 'Submitted', report.submitted_at),
+            ('triaged', 'Triaged', None),
+            ('resolved', 'Resolved', None),
+          ] %}
+        {% endif %}
+        {% set _step_statuses = _steps | map(attribute=0) | list %}
+        {% set ns = namespace(current_idx=-1) %}
+        {% for st, _, __ in _steps %}
+          {% if st == report.status %}{% set ns.current_idx = loop.index0 %}{% endif %}
+        {% endfor %}
+        <div class="d-flex gap-4 align-items-start overflow-auto pb-2">
+          {% for step_status, step_label, step_ts in _steps %}
+          {% set _loop_idx = loop.index0 %}
+          {% set _is_completed = ns.current_idx > _loop_idx %}
+          {% set _is_current   = ns.current_idx == _loop_idx %}
+          <div class="text-center flex-shrink-0" style="min-width:70px;">
+            <div class="rounded-circle d-flex align-items-center justify-content-center mx-auto mb-2
+              {% if _is_completed %}bg-theme{% elif _is_current %}bg-warning{% else %}bg-inverse bg-opacity-10{% endif %}"
+              style="width:36px;height:36px;">
+              {% if _is_completed %}<i class="bi bi-check text-dark fw-bold"></i>
+              {% elif _is_current %}<i class="bi bi-circle-fill text-dark" style="font-size:8px;"></i>
+              {% else %}<i class="bi bi-circle text-inverse text-opacity-25" style="font-size:8px;"></i>{% endif %}
+            </div>
+            <div class="small fw-bold {% if _is_completed %}text-theme{% elif _is_current %}text-warning{% else %}text-inverse text-opacity-25{% endif %}">
+              {{ step_label }}
+            </div>
+            {% if step_ts %}
+            <div class="text-inverse text-opacity-50" style="font-size:0.7rem;">{{ step_ts.strftime('%Y-%m-%d') }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# ── Report Body Sections ── #}
+    {% macro md_section(title, content, icon, anchor) %}
+    {% if content %}
+    <div class="card mb-3" id="{{ anchor }}">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-{{ icon }} me-2 text-theme"></i>{{ title }}</span>
+        <a href="#{{ anchor }}" class="text-inverse text-opacity-25 text-decoration-none" style="font-size:0.75rem;">
+          <i class="bi bi-link-45deg"></i>
+        </a>
+      </div>
+      <div class="card-body">
+        <div class="markdown-content">{{ content|safe }}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% endmacro %}
+
+    {{ md_section('Description', rendered.description, 'text-paragraph', 'description') }}
+    {{ md_section('Steps to Reproduce', rendered.steps_to_reproduce, 'list-ol', 'steps') }}
+    {{ md_section('Proof of Concept', rendered.proof_of_concept, 'code-slash', 'poc') }}
+    {{ md_section('Impact Statement', rendered.impact_statement, 'exclamation-diamond', 'impact') }}
+    {{ md_section('Technical Details', rendered.technical_details, 'cpu', 'technical') }}
+    {{ md_section('Remediation', rendered.remediation, 'wrench', 'remediation') }}
+
+  </div>{# end left column #}
+
+  {# ════ RIGHT COLUMN — Actions & Timeline ════ #}
+  <div class="col-lg-4">
+
+    {# ── Attachments ── #}
+    {% if attachments %}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-paperclip me-2 text-theme"></i>Attachments
+        <span class="badge bg-secondary ms-1">{{ attachments|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        {# Image gallery #}
+        {% set images = attachments | selectattr('mime_type', 'match', '^image/') | list %}
+        {% if images %}
+        <div class="d-flex flex-wrap gap-2 mb-2 p-1">
+          {% for att in images %}
+          <a href="{{ url_for('serve_attachment', attachment_uuid=att.id) }}"
+             target="_blank" rel="noopener noreferrer"
+             title="{{ att.filename_original }}">
+            <img src="{{ url_for('serve_attachment', attachment_uuid=att.id) }}"
+                 class="rounded border border-inverse border-opacity-10"
+                 style="width:80px;height:80px;object-fit:cover;cursor:pointer;"
+                 alt="{{ att.filename_original }}"
+                 onerror="this.parentElement.style.display='none'">
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {# File list #}
+        <div class="d-flex flex-column gap-1">
+          {% for att in attachments %}
+          {% set is_image = att.mime_type and att.mime_type.startswith('image/') %}
+          <div class="d-flex align-items-center gap-2 px-2 py-1 rounded bg-inverse bg-opacity-5">
+            <i class="bi bi-{% if is_image %}image{% elif 'pdf' in att.mime_type %}file-pdf{% elif 'video' in att.mime_type %}camera-video{% else %}file-earmark{% endif %} text-theme flex-shrink-0"></i>
+            <span class="small text-inverse flex-1 text-truncate" title="{{ att.filename_original }}" style="max-width:120px;">{{ att.filename_original }}</span>
+            <span class="text-inverse text-opacity-50" style="font-size:0.65rem; white-space:nowrap;">{{ (att.file_size / 1024)|round(1) }}KB</span>
+            <div class="d-flex gap-1 flex-shrink-0">
+              <button class="btn btn-link btn-sm p-0 text-inverse text-opacity-50"
+                      title="Copy markdown reference"
+                      onclick="copyMarkdownRef(this, '{{ att.filename_original | replace("'", "\\'") }}', '{{ url_for('serve_attachment', attachment_uuid=att.id) }}', {{ 'true' if is_image else 'false' }})">
+                <i class="bi bi-braces"></i>
+              </button>
+              <a href="{{ url_for('serve_attachment', attachment_uuid=att.id) }}"
+                 class="btn btn-link btn-sm p-0 text-theme"
+                 target="_blank" rel="noopener noreferrer" title="View/Download">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="px-2 pt-2">
+          <p class="text-inverse text-opacity-50 mb-0" style="font-size:0.7rem;">
+            <i class="bi bi-info-circle me-1"></i>Click <i class="bi bi-braces"></i> to copy markdown syntax for inline reference.
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# ── Activity Timeline ── #}
+    <div class="card mb-3">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold">
+        <i class="bi bi-clock-history me-2 text-theme"></i>Activity
+      </div>
+      <div class="card-body p-0">
+        <div style="max-height:420px; overflow-y:auto; padding:1rem 1rem 0.5rem;">
+        {% if activity %}
+        <div class="position-relative" style="padding-left:1.5rem;" id="activity-timeline-list">
+          <div class="position-absolute top-0 bottom-0" style="left:0.45rem;width:2px;background:rgba(255,255,255,0.06);"></div>
+          {% for evt in activity %}
+          {% set icon_map = {
+            'invite_sent': ('send','theme'),
+            'link_clicked': ('box-arrow-in-right','info'),
+            'setup_complete': ('shield-check','theme'),
+            'reply_posted': ('chat-dots','primary'),
+            'field_edit_proposed': ('pencil-square','info'),
+            'report_edited': ('pencil','secondary'),
+            'bounty_set': ('currency-dollar','warning'),
+            'bounty_sent': ('send','theme'),
+            'bounty_edited': ('pencil-square','warning'),
+            'status_changed': ('arrow-repeat','warning'),
+            'retest_requested': ('arrow-clockwise','info'),
+            'retest_confirmed': ('patch-check','theme'),
+            'report_reopened': ('arrow-counterclockwise','info'),
+            'field_edit_accepted': ('check-circle','theme'),
+            'field_edit_rejected': ('x-circle','danger'),
+            'session_refreshed': ('arrow-clockwise','secondary'),
+            'account_locked': ('lock','danger'),
+            'account_unlocked': ('unlock','theme'),
+            'followup_30_sent': ('envelope','secondary'),
+            'followup_60_sent': ('envelope','secondary'),
+            'followup_90_sent': ('envelope','secondary'),
+          } %}
+          {% set icon_info = icon_map.get(evt.action, ('circle','secondary')) %}
+          <div class="d-flex gap-2 mb-3 position-relative activity-entry">
+            <div class="position-absolute" style="left:-1.5rem;top:0.1rem;">
+              <div class="rounded-circle d-flex align-items-center justify-content-center bg-{{ icon_info[1] }}" style="width:18px;height:18px;">
+                <i class="bi bi-{{ icon_info[0] }}" style="font-size:0.55rem;color:{% if icon_info[1] in ('warning','theme') %}#000{% else %}#fff{% endif %};"></i>
+              </div>
+            </div>
+            <div class="flex-1 min-width-0">
+              <div class="small fw-bold text-inverse">
+                {% if evt.action == 'invite_sent' %}Invite sent
+                {% elif evt.action == 'link_clicked' %}Portal link accessed
+                {% elif evt.action == 'setup_complete' %}Portal setup completed
+                {% elif evt.action == 'reply_posted' %}
+                  {% set _m = evt.metadata_ or {} %}
+                  {% set _rpa = _m.get('author') or ('Researcher' if _m.get('author_type') == 'owner' else ('Security Team' if _m.get('author_type') else None)) %}
+                  {% if _rpa == 'Researcher' %}
+                    <span class="text-theme">Researcher</span> replied
+                  {% elif _rpa %}
+                    <span class="text-info">{{ _rpa }}</span> <span class="text-inverse text-opacity-50">(Security Team)</span> replied
+                  {% else %}Reply posted{% endif %}
+                {% elif evt.action == 'field_edit_proposed' %}Correction proposed{% if evt.metadata_ and evt.metadata_.get('field_name') %}: <span class="text-theme">{{ evt.metadata_['field_name']|replace('_',' ') }}</span>{% endif %}
+                {% elif evt.action == 'report_edited' %}Report updated by researcher
+                {% elif evt.action == 'field_edit_accepted' %}Field correction accepted{% if evt.metadata_ and (evt.metadata_.get('field') or evt.metadata_.get('field_name')) %}: <span class="text-theme">{{ (evt.metadata_.get('field') or evt.metadata_.get('field_name'))|replace('_',' ') }}</span>{% endif %}
+                {% elif evt.action == 'field_edit_rejected' %}Field correction rejected{% if evt.metadata_ and (evt.metadata_.get('field') or evt.metadata_.get('field_name')) %}: <span class="text-theme">{{ (evt.metadata_.get('field') or evt.metadata_.get('field_name'))|replace('_',' ') }}</span>{% endif %}
+                {% elif evt.action == 'bounty_set' %}{% if evt.metadata_ and evt.metadata_.get('bonus') %}<span class="text-warning fw-bold">Bonus offered</span>{% else %}Bounty offered{% endif %}{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-theme">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% elif evt.action == 'bounty_sent' %}Payment sent{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-theme">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% elif evt.action == 'bounty_edited' %}Bounty updated{% if evt.metadata_ %} — <span class="text-inverse text-opacity-50">{{ evt.metadata_.get('old_amount','?') }} {{ evt.metadata_.get('old_currency','') }}</span> → <span class="text-warning">{{ evt.metadata_.get('new_amount','?') }} {{ evt.metadata_.get('new_currency','') }}</span>{% endif %}
+                {% elif evt.action == 'retest_requested' %}Retest requested by <span class="text-info">Security Team</span>
+                {% elif evt.action == 'retest_confirmed' %}Retest confirmed{% if evt.metadata_ and evt.metadata_.get('outcome') %} — <span class="{% if evt.metadata_['outcome'] == 'fixed' %}text-theme{% else %}text-danger{% endif %}">{{ evt.metadata_['outcome']|title }}</span>{% endif %}
+                {% elif evt.action == 'report_reopened' %}Report reopened{% if evt.metadata_ and evt.metadata_.get('reopened_by') %} by <span class="text-info">{{ evt.metadata_['reopened_by'] }}</span>{% endif %}
+                {% elif evt.action == 'status_changed' %}Status changed{% if evt.metadata_ and evt.metadata_.get('new_status') %} → <span class="badge bg-secondary" style="font-size:0.6rem;">{{ evt.metadata_['new_status']|upper }}</span>{% endif %}
+                {% elif evt.action == 'account_locked' %}Access locked
+                {% elif evt.action == 'account_unlocked' %}Access restored
+                {% elif evt.action in ('followup_30_sent','followup_60_sent','followup_90_sent') %}Follow-up email sent
+                {% else %}{{ evt.action | replace('_',' ') | title }}
+                {% endif %}
+              </div>
+              <div class="text-inverse text-opacity-50" style="font-size:0.65rem;">
+                {{ evt.performed_at.strftime('%Y-%m-%d %H:%M UTC') if evt.performed_at else '—' }}
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="position-relative" style="padding-left:1.5rem;" id="activity-timeline-list">
+          <div class="position-absolute top-0 bottom-0" style="left:0.45rem;width:2px;background:rgba(255,255,255,0.06);"></div>
+          <p class="text-inverse text-opacity-50 small mb-0" id="activity-no-entries">No activity recorded yet.</p>
+        </div>
+        {% endif %}
+        </div>{# end scrollable #}
+      </div>
+    </div>
+
+    {# ── Field Edit Proposals ── #}
+    <div class="card mb-3" id="field-edit-section">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-pencil-square me-2 text-theme"></i>Field Proposals</span>
+        {% if pending_count < 3 %}
+        <button class="btn btn-sm btn-outline-theme" data-bs-toggle="modal" data-bs-target="#editModal"
+                data-field="title" data-label="Title"
+                data-current="{{ report.title }}" data-type="text">
+          <i class="bi bi-plus me-1"></i>New
+        </button>
+        {% endif %}
+      </div>
+      <div class="card-body p-3">
+        {% if pending_count >= 3 %}
+        <div class="alert alert-warning small py-2 mb-2">
+          <i class="bi bi-hourglass me-1"></i>3 proposals pending owner review. No more can be added.
+        </div>
+        {% endif %}
+        {% if all_field_edits %}
+        {% for edit in all_field_edits %}
+        <div class="d-flex align-items-center gap-2 mb-2 p-2 rounded bg-inverse bg-opacity-5">
+          <div class="flex-1 min-width-0">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <code class="text-theme small">{{ edit.field_name }}</code>
+              <span class="badge {% if edit.status == 'pending' %}bg-warning text-dark{% elif edit.status == 'accepted' %}bg-theme{% else %}bg-secondary{% endif %}" style="font-size:0.6rem;">
+                {{ edit.status|upper }}
+              </span>
+            </div>
+            <div class="text-inverse text-opacity-75 small text-truncate">
+              → {{ edit.proposed_value|truncate(50) }}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-inverse text-opacity-50 small mb-0">
+          Click the pencil icons <i class="bi bi-pencil text-theme"></i> on any field to propose a correction.
+        </p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# end right column #}
+</div>{# end row #}
+
+
+{# ════ Discussion — unified thread + compose ════ #}
+<div class="card mb-3" id="discussion-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold d-flex align-items-center justify-content-between">
+    <span><i class="bi bi-chat-dots me-2 text-theme"></i>Discussion</span>
+    {% if thread_items %}
+    <span class="badge bg-secondary" style="font-size:0.65rem;">{{ thread_items|length }}</span>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+
+    {# ── Thread ── #}
+    <div id="replies-scroll" style="max-height:520px;overflow-y:auto;padding:1rem 1rem 0.5rem;">
+      {% if thread_items %}
+      {% for item in thread_items %}
+      {% if item.item_type == 'reply' %}
+      <div class="d-flex gap-2 mb-3 thread-reply-item align-items-start
+                  {% if item.author_type == 'security_team' %}flex-row-reverse{% endif %}">
+        <div class="flex-shrink-0">
+          <div class="rounded-circle d-flex align-items-center justify-content-center fw-bold
+            {% if item.author_type == 'owner' %}bg-theme{% else %}bg-info{% endif %}"
+            style="width:32px;height:32px;font-size:0.7rem;color:#000;">
+            {{ item.author_name[:1]|upper if item.author_name else '?' }}
+          </div>
+        </div>
+        <div class="min-width-0{% if item.author_type == 'security_team' %} text-end{% endif %}" style="max-width:78%;">
+          <div class="d-flex align-items-center gap-2 mb-1 flex-wrap
+                      {% if item.author_type == 'security_team' %}justify-content-end{% endif %}">
+            <span class="badge {% if item.author_type == 'owner' %}bg-theme{% else %}bg-info{% endif %}"
+                  style="font-size:0.65rem;">
+              {{ item.author_name|truncate(24, True) }}
+            </span>
+            <span class="text-inverse text-opacity-40" style="font-size:0.65rem;">
+              {% if item.author_type == 'owner' %}Researcher{% else %}Security Team{% endif %}
+            </span>
+            <span class="text-inverse text-opacity-50" style="font-size:0.65rem;">
+              {{ item.created_at.strftime('%b %d, %H:%M') }}
+            </span>
+          </div>
+          <div class="d-inline-block p-2 rounded markdown-content small text-start"
+               style="max-width:100%; background:rgba({% if item.author_type == 'owner' %}0,212,150{% else %}0,180,220{% endif %},0.08); border-left:2px solid rgba({% if item.author_type == 'owner' %}0,212,150{% else %}0,180,220{% endif %},0.35);">
+            {{ item.body_html|safe }}
+          </div>
+        </div>
+      </div>
+      {% elif item.item_type == 'event' %}
+      <div class="d-flex align-items-center gap-2 mb-2 px-2 py-1 rounded thread-event-item"
+           style="background:rgba(0,212,255,0.04);border-left:2px solid rgba(0,212,255,0.2);">
+        <i class="bi bi-{{ item.icon }} text-theme flex-shrink-0" style="font-size:0.75rem;"></i>
+        <span class="small text-inverse text-opacity-75 flex-1">{{ item.label }}</span>
+        <span class="text-inverse text-opacity-35" style="font-size:0.65rem;white-space:nowrap;">
+          {{ item.created_at.strftime('%b %d, %H:%M') }}
+        </span>
+      </div>
+      {% endif %}
+      {% endfor %}
+      {% else %}
+      <p class="text-inverse text-opacity-50 small mb-3" id="portal-no-thread-msg">
+        No messages yet. Start the conversation below.
+      </p>
+      {% endif %}
+    </div>
+
+    {# ── Payment status banner — shown when a payment exists ── #}
+    {% if payment %}
+    <div class="mx-3 mb-3 p-3 rounded"
+         style="{% if payment.status == 'completed' %}background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.2);
+                {% elif payment.status == 'processing' %}background:rgba(255,170,0,0.06);border:1px solid rgba(255,170,0,0.2);
+                {% else %}background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.15);{% endif %}">
+
+      {% if payment.status == 'completed' %}
+      <div class="d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-theme flex-shrink-0"
+             style="width:36px;height:36px;color:#000;font-size:1rem;">
+          <i class="bi bi-check-circle-fill"></i>
+        </div>
+        <div>
+          <div class="fw-bold text-theme">{{ payment.amount }} {{ payment.currency }}
+            <span class="badge bg-theme ms-2" style="font-size:0.6rem;">CONFIRMED</span>
+          </div>
+          <div class="small text-inverse text-opacity-75">
+            Payment confirmed received by researcher{% if payment.completed_at %} — {{ payment.completed_at.strftime('%Y-%m-%d') }}{% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% elif payment.status == 'processing' %}
+      <div class="d-flex align-items-start gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning flex-shrink-0"
+             style="width:36px;height:36px;color:#000;font-size:1rem;">
+          <i class="bi bi-hourglass-split"></i>
+        </div>
+        <div class="flex-1">
+          <div class="fw-bold">{{ payment.amount }} {{ payment.currency }}
+            <span class="badge bg-warning text-dark ms-2" style="font-size:0.6rem;">SENT — AWAITING CONFIRMATION</span>
+          </div>
+          <div class="small text-inverse text-opacity-75 mt-1">
+            Marked as sent via <strong>{{ payment.method.replace('_',' ').title() }}</strong>. Waiting for researcher to confirm.
+          </div>
+          {% if payment.reference %}
+          <div class="mt-1 text-inverse text-opacity-50 small">TX ref: <code>{{ payment.reference }}</code></div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% elif payment.status == 'pending' %}
+      <div class="d-flex align-items-start gap-3 mb-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-info flex-shrink-0"
+             style="width:36px;height:36px;color:#000;font-size:1rem;">
+          <i class="bi bi-currency-dollar"></i>
+        </div>
+        <div class="flex-1 min-width-0">
+          <div class="fw-bold">{{ payment.amount }} {{ payment.currency }}
+            <span class="badge bg-info text-dark ms-2" style="font-size:0.6rem;">SEND PAYMENT TO</span>
+          </div>
+          {# Payment destination #}
+          {% if payment.method == 'paypal' and payment.paypal_recipient_email %}
+          <div class="mt-2 p-2 rounded bg-inverse bg-opacity-5">
+            <div class="text-inverse text-opacity-50 small mb-1"><i class="bi bi-paypal me-1"></i>PayPal Email</div>
+            <div class="d-flex align-items-center gap-2">
+              <code class="small flex-1">{{ payment.paypal_recipient_email }}</code>
+              <button class="btn btn-link btn-sm p-0 text-theme"
+                      onclick="copyToClipboard(this,'{{ payment.paypal_recipient_email }}')" title="Copy">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            {% set _paypal_me = config.get('PAYPAL_ME_URL','') %}
+            {% if _paypal_me %}
+            <div class="mt-2">
+              <a href="{{ _paypal_me }}" target="_blank" rel="noopener noreferrer"
+                 class="btn btn-sm btn-outline-theme w-100">
+                <i class="bi bi-paypal me-1"></i>Pay via PayPal.me
+              </a>
+            </div>
+            {% endif %}
+          </div>
+          {% elif payment.method == 'crypto' and payment.crypto_address %}
+          <div class="mt-2 p-2 rounded bg-inverse bg-opacity-5">
+            <div class="text-inverse text-opacity-50 small mb-1">
+              <i class="bi bi-coin me-1"></i>{{ payment.crypto_network }} Address
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <code class="small flex-1" style="word-break:break-all;">{{ payment.crypto_address }}</code>
+              <button class="btn btn-link btn-sm p-0 text-theme flex-shrink-0"
+                      onclick="copyToClipboard(this,'{{ payment.crypto_address }}')" title="Copy">
+                <i class="bi bi-clipboard"></i>
+              </button>
+            </div>
+            <div class="alert alert-warning small py-1 px-2 mt-2 mb-0">
+              <i class="bi bi-exclamation-triangle me-1"></i>
+              Always verify the full address before sending. Crypto transactions are irreversible.
+            </div>
+          </div>
+          {% elif payment.method == 'bank_transfer' %}
+          {% set bc = bounty_config.get('bank_transfer', {}) %}
+          <div class="mt-2 p-2 rounded bg-inverse bg-opacity-5 small">
+            <div class="text-inverse text-opacity-50 mb-1"><i class="bi bi-bank me-1"></i>Bank Transfer Details</div>
+            {% if bc.get('account_name') %}<div><span class="text-inverse text-opacity-50">Account Name:</span> <strong>{{ bc.account_name }}</strong></div>{% endif %}
+            {% if bc.get('bank_name') %}<div><span class="text-inverse text-opacity-50">Bank:</span> {{ bc.bank_name }}</div>{% endif %}
+            {% if bc.get('account_number') %}<div><span class="text-inverse text-opacity-50">Account No.:</span> <code>{{ bc.account_number }}</code></div>{% endif %}
+            {% if bc.get('iban') %}<div><span class="text-inverse text-opacity-50">IBAN:</span> <code>{{ bc.iban }}</code></div>{% endif %}
+            {% if bc.get('swift') %}<div><span class="text-inverse text-opacity-50">SWIFT/BIC:</span> <code>{{ bc.swift }}</code></div>{% endif %}
+            {% if bc.get('routing') %}<div><span class="text-inverse text-opacity-50">Routing:</span> <code>{{ bc.routing }}</code></div>{% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {# Mark-as-sent inline form #}
+      <form method="POST" action="{{ url_for('portal.mark_bounty_sent', invite_uuid=invite.id) }}"
+            class="d-flex align-items-center gap-2 flex-wrap">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="tx_reference" class="form-control form-control-sm flex-1"
+               placeholder="TX ref / transaction ID (optional)" style="min-width:200px;">
+        <button type="submit" class="btn btn-theme btn-sm flex-shrink-0">
+          <i class="bi bi-send me-1"></i>I've Sent the Payment
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# ── Compose area ── #}
+    <div class="border-top" style="padding:1rem;">
+      <form method="POST" action="{{ url_for('portal.compose', invite_uuid=invite.id) }}"
+            enctype="multipart/form-data" id="compose-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {# Action selector — above the textarea #}
+        <div class="mb-2">
+          {% set _portal_closed = report.status in ['duplicate', 'informative', 'resolved', 'wont_fix'] %}
+          <select name="action" class="form-select form-select-sm" id="compose-action">
+            <option value="">— No Change —</option>
+            {% if _portal_closed %}
+            <option value="reopen">Reopen — reactivate this report for further discussion</option>
+            {% else %}
+            <option value="triaged" {% if report.status == 'triaged' %}selected{% endif %}>Triaged — confirmed &amp; queued for fix</option>
+            <option value="duplicate">Duplicate — already reported internally</option>
+            <option value="informative">Informative — not a security concern</option>
+            <option value="resolved">Resolved — issue has been patched</option>
+            <option value="wont_fix">Won't Fix — no remediation planned</option>
+            <option value="request_retest">Retest — ask researcher to verify the fix</option>
+            {% if not payment %}
+            <option value="set_bounty">Set Bounty — issue a reward to the researcher</option>
+            {% elif payment.status == 'pending' %}
+            <option value="edit_bounty">Edit Bounty — adjust the reward amount</option>
+            {% endif %}
+            {% if retest_confirmed_exists %}
+            <option value="set_bonus">Bonus — additional reward after retest confirmed</option>
+            {% endif %}
+            {% endif %}
+          </select>
+        </div>
+
+        {# Bounty fields — shown when Set Bounty or Edit Bounty is selected #}
+        <div id="compose-bounty-row" style="display:none;" class="mb-2 p-3 rounded bg-inverse bg-opacity-5">
+          <div class="row g-2 mb-2">
+            <div class="col-8">
+              <label class="form-label fw-bold small mb-1">Amount</label>
+              <input type="number" name="bounty_amount" id="compose-bounty-amount"
+                     class="form-control form-control-sm"
+                     step="any" min="0.01" placeholder="0.00"
+                     oninput="this.classList.remove('is-invalid');var e=document.getElementById('bounty-amount-error');if(e)e.textContent='';">
+            </div>
+            <div class="col-4">
+              <label class="form-label fw-bold small mb-1">Currency</label>
+              <select name="bounty_currency" class="form-select form-select-sm">
+                {% for c in ['USD','EUR','GBP','PHP','BTC','ETH','USDT','USDC','DOGE','XMR','BNB','LTC'] %}
+                <option value="{{ c }}">{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label fw-bold small mb-1">Payment Method</label>
+            <div class="d-flex flex-column gap-1">
+              {% if bounty_config.get('paypal') %}
+              <label class="d-flex align-items-center gap-2 p-2 rounded bg-inverse bg-opacity-5" style="cursor:pointer;">
+                <input type="radio" name="method" value="paypal" class="form-check-input m-0">
+                <i class="bi bi-paypal text-theme"></i>
+                <span class="small fw-bold">PayPal</span>
+                <span class="text-inverse text-opacity-50 small ms-auto">{{ bounty_config.paypal.email }}</span>
+              </label>
+              {% endif %}
+              {% if bounty_config.get('crypto') %}
+              <label class="d-flex align-items-center gap-2 p-2 rounded bg-inverse bg-opacity-5" style="cursor:pointer;">
+                <input type="radio" name="method" value="crypto" class="form-check-input m-0"
+                       id="compose-method-crypto">
+                <i class="bi bi-coin text-theme"></i>
+                <span class="small fw-bold">Cryptocurrency</span>
+              </label>
+              <div id="compose-crypto-network-row" style="display:none;" class="ps-4 pb-1">
+                <select name="crypto_network" class="form-select form-select-sm">
+                  {% for key, info in bounty_config.crypto.items() %}
+                  <option value="{{ key }}">{{ info.label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              {% endif %}
+              {% if bounty_config.get('bank_transfer') %}
+              <label class="d-flex align-items-center gap-2 p-2 rounded bg-inverse bg-opacity-5" style="cursor:pointer;">
+                <input type="radio" name="method" value="bank_transfer" class="form-check-input m-0">
+                <i class="bi bi-bank text-theme"></i>
+                <span class="small fw-bold">Bank Transfer</span>
+              </label>
+              {% endif %}
+              <label class="d-flex align-items-center gap-2 p-2 rounded bg-inverse bg-opacity-5" style="cursor:pointer;">
+                <input type="radio" name="method" value="other" class="form-check-input m-0">
+                <i class="bi bi-three-dots text-theme"></i>
+                <span class="small fw-bold">Other / Manual</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {# Attachment quick-reference insert bar #}
+        {% if attachments %}
+        <div class="mb-2 p-2 rounded bg-inverse bg-opacity-5" style="border:1px solid rgba(255,255,255,0.06);">
+          <div class="text-inverse text-opacity-50 mb-1" style="font-size:0.7rem;">
+            <i class="bi bi-paperclip me-1"></i>Insert attachment reference:
+          </div>
+          <div class="d-flex flex-wrap gap-1">
+            {% for att in attachments %}
+            {% set _is_img = att.mime_type and att.mime_type.startswith('image/') %}
+            <button type="button"
+                    class="btn btn-link btn-sm p-0 d-flex align-items-center gap-1 text-inverse text-opacity-60"
+                    style="font-size:0.7rem;text-decoration:none;"
+                    title="Insert {{ '![image]' if _is_img else '[link]' }} reference"
+                    onclick="portalInsertRef('{{ att.filename_original | replace("'", "\\'") }}', '{{ url_for('serve_attachment', attachment_uuid=att.id) }}', {{ 'true' if _is_img else 'false' }})">
+              <i class="bi bi-{% if _is_img %}image{% elif att.mime_type and 'pdf' in att.mime_type %}file-pdf{% elif att.mime_type and 'video' in att.mime_type %}camera-video{% else %}file-earmark{% endif %} text-theme"></i>
+              <span class="text-truncate" style="max-width:100px;">{{ att.filename_original|truncate(18, True) }}</span>
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {# Reply textarea — always visible #}
+        <div class="mb-2">
+          <textarea name="body" class="form-control" rows="4" id="compose-body"
+                    placeholder="Write your response... (Markdown supported)"
+                    style="resize:vertical;"></textarea>
+        </div>
+
+        {# Attachments #}
+        <div class="mb-3">
+          <input type="file" name="reply_attachments" multiple class="form-control form-control-sm"
+                 accept=".png,.jpg,.jpeg,.gif,.pdf,.txt,.log,.mp4,.mov,.webm">
+          <div class="form-text text-inverse text-opacity-50 small">Optional: attach images or files</div>
+        </div>
+
+        <button type="submit" class="btn btn-theme" id="compose-submit">
+          <i class="bi bi-send me-1"></i>Post Reply
+        </button>
+      </form>
+    </div>
+
+  </div>
+</div>{# end discussion card #}
+
+
+{# ════ Field Edit Proposal Modal ════ #}
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="editModalLabel">
+          <i class="bi bi-pencil-square me-2 text-theme"></i>Propose Correction
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('portal.submit_field_edit', invite_uuid=invite.id) }}" id="edit-proposal-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="field_name" id="modal-field-name">
+        <div class="modal-body">
+          <div class="alert alert-info small py-2 mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Proposals are reviewed by the researcher before taking effect. Max 3 pending at a time.
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small" id="modal-field-label">Field</label>
+            <div id="modal-input-container"></div>
+            <div class="form-text text-inverse text-opacity-50 small" id="modal-current-value-hint"></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small">
+              Reason
+              <span class="text-inverse text-opacity-50">(optional)</span>
+            </label>
+            <textarea name="reason" class="form-control" rows="3"
+                      placeholder="Explain why this correction is needed..."
+                      id="edit-reason-textarea"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-theme">
+            <i class="bi bi-send me-1"></i>Submit Proposal
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+  // ── Modal: populate fields from data-* attributes ──
+  var editModal = document.getElementById('editModal');
+  if (editModal) {
+    editModal.addEventListener('show.bs.modal', function(event) {
+      var btn = event.relatedTarget;
+      var field = btn.getAttribute('data-field');
+      var label = btn.getAttribute('data-label');
+      var current = btn.getAttribute('data-current') || '';
+      var type = btn.getAttribute('data-type') || 'text';
+      var options = (btn.getAttribute('data-options') || '').split(',').filter(Boolean);
+
+      document.getElementById('modal-field-name').value = field;
+      document.getElementById('modal-field-label').textContent = label;
+      document.getElementById('modal-current-value-hint').textContent =
+        current ? 'Current value: ' + current : 'Currently not set';
+
+      // Reset reason field on modal open
+      var reasonTA = document.getElementById('edit-reason-textarea');
+      if (reasonTA) { reasonTA.value = ''; }
+
+      var container = document.getElementById('modal-input-container');
+      container.innerHTML = '';  // clear previous input
+
+      if (type === 'select' && options.length) {
+        // Use createElement for selects too — safe against injection
+        var sel = document.createElement('select');
+        sel.name = 'proposed_value';
+        sel.className = 'form-select';
+        sel.required = true;
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '— Select —';
+        sel.appendChild(placeholder);
+        options.forEach(function(opt) {
+          var o = document.createElement('option');
+          o.value = opt;
+          o.textContent = opt.charAt(0).toUpperCase() + opt.slice(1).replace('_', ' ');
+          if (opt === current) { o.selected = true; }
+          sel.appendChild(o);
+        });
+        container.appendChild(sel);
+      } else if (type === 'number') {
+        var inp = document.createElement('input');
+        inp.type = 'number';
+        inp.name = 'proposed_value';
+        inp.className = 'form-control';
+        inp.setAttribute('step', 'any');
+        inp.value = current;
+        inp.required = true;
+        container.appendChild(inp);
+      } else {
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.name = 'proposed_value';
+        inp.className = 'form-control';
+        inp.value = current;  // safe assignment — no innerHTML injection risk
+        inp.required = true;
+        inp.maxLength = 500;
+        container.appendChild(inp);
+      }
+    });
+  }
+
+  // ── Compose: show/hide bounty row on action change ──
+  var actionSel = document.getElementById('compose-action');
+  var bountyRow = document.getElementById('compose-bounty-row');
+  var submitBtn = document.getElementById('compose-submit');
+
+  var STATUS_ACTIONS = new Set(['triaged','duplicate','informative','resolved','wont_fix','reopen']);
+  var BOUNTY_ACTIONS = new Set(['set_bounty','edit_bounty','set_bonus']);
+
+  function updateComposeAction() {
+    var val = actionSel ? actionSel.value : '';
+    if (bountyRow) bountyRow.style.display = BOUNTY_ACTIONS.has(val) ? '' : 'none';
+    if (submitBtn) {
+      if (BOUNTY_ACTIONS.has(val)) {
+        var btnLabel = val === 'edit_bounty' ? 'Update Bounty' : val === 'set_bonus' ? 'Send Bonus' : 'Set Bounty';
+        submitBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' + btnLabel;
+      } else if (val === 'reopen') {
+        submitBtn.innerHTML = '<i class="bi bi-arrow-counterclockwise me-1"></i>Reopen Report';
+      } else if (STATUS_ACTIONS.has(val)) {
+        submitBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Update Status';
+      } else if (val === 'request_retest') {
+        submitBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Request Retest';
+      } else {
+        submitBtn.innerHTML = '<i class="bi bi-send me-1"></i>Post Reply';
+      }
+    }
+  }
+
+  if (actionSel) {
+    actionSel.addEventListener('change', updateComposeAction);
+    updateComposeAction();
+  }
+
+  // ── Compose form validation ──
+  var composeForm = document.getElementById('compose-form');
+  if (composeForm) {
+    composeForm.addEventListener('submit', function(e) {
+      var val = actionSel ? actionSel.value : '';
+      var body = (document.getElementById('compose-body').value || '').trim();
+      if (BOUNTY_ACTIONS.has(val)) {
+        var amtInput = document.querySelector('[name=bounty_amount]');
+        var amt = parseFloat(amtInput ? amtInput.value : '');
+        if (isNaN(amt) || amt <= 0) {
+          e.preventDefault();
+          if (amtInput) {
+            amtInput.classList.add('is-invalid');
+            var errEl = document.getElementById('bounty-amount-error');
+            if (!errEl) {
+              errEl = document.createElement('div');
+              errEl.id = 'bounty-amount-error';
+              errEl.className = 'invalid-feedback';
+              amtInput.parentNode.appendChild(errEl);
+            }
+            errEl.textContent = 'Amount must be greater than zero.';
+            amtInput.focus();
+          }
+          return;
+        } else if (amtInput) {
+          amtInput.classList.remove('is-invalid');
+          var errEl2 = document.getElementById('bounty-amount-error');
+          if (errEl2) errEl2.textContent = '';
+        }
+        if (val === 'set_bounty' || val === 'set_bonus') {
+          var method = composeForm.querySelector('input[name="method"]:checked');
+          if (!method) {
+            e.preventDefault();
+            var methodRow = document.getElementById('compose-bounty-row');
+            if (methodRow) {
+              var methodErr = document.getElementById('bounty-method-error');
+              if (!methodErr) {
+                methodErr = document.createElement('div');
+                methodErr.id = 'bounty-method-error';
+                methodErr.className = 'text-danger small mt-1';
+                methodRow.appendChild(methodErr);
+              }
+              methodErr.textContent = 'Please select a payment method.';
+            }
+            return;
+          }
+        }
+      }
+      if (!val && !body) {
+        e.preventDefault();
+        alert('Please select an action or write a message.');
+        document.getElementById('compose-body').focus();
+      }
+    });
+  }
+
+  // ── Auto-scroll discussion to bottom ──
+  var scroll = document.getElementById('replies-scroll');
+  if (scroll) scroll.scrollTop = scroll.scrollHeight;
+
+});
+
+// ── Copy markdown attachment reference ──
+function copyMarkdownRef(btn, filename, url, isImage) {
+  var syntax = isImage
+    ? '![' + filename + '](' + url + ')'
+    : '[' + filename + '](' + url + ')';
+  navigator.clipboard.writeText(syntax).then(function() {
+    var icon = btn.querySelector('i');
+    icon.className = 'bi bi-check text-theme';
+    setTimeout(function() { icon.className = 'bi bi-braces'; }, 1500);
+  }).catch(function() {
+    prompt('Copy this markdown reference:', syntax);
+  });
+}
+
+// ── Insert attachment reference at cursor in compose textarea ──
+function portalInsertRef(filename, url, isImage) {
+  var ta = document.getElementById('compose-body');
+  if (!ta) return;
+  var syntax = isImage ? '![' + filename + '](' + url + ')' : '[' + filename + '](' + url + ')';
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var before = ta.value.substring(0, start);
+  var after  = ta.value.substring(end);
+  var sep = (before.length > 0 && !before.endsWith('\n')) ? '\n' : '';
+  ta.value = before + sep + syntax + after;
+  ta.selectionStart = ta.selectionEnd = start + sep.length + syntax.length;
+  ta.focus();
+}
+
+// ── Real-time polling for new replies/events ──
+(function() {
+  var lastSince = new Date().toISOString();
+  var pollUrl = '{{ url_for("portal.poll_updates", invite_uuid=invite.id) }}';
+  var scroll = document.getElementById('replies-scroll');
+  var timeline = document.getElementById('activity-timeline-list');
+
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+
+  // Append an item to the activity timeline (right column)
+  function appendTimelineEntry(item) {
+    if (!timeline) return;
+    // Remove "no entries" placeholder
+    var noEntry = document.getElementById('activity-no-entries');
+    if (noEntry) noEntry.remove();
+
+    var iconMap = {
+      'reply_posted': ['chat-dots', 'primary'],
+      'status_changed': ['arrow-repeat', 'warning'],
+      'bounty_set': ['currency-dollar', 'warning'],
+      'field_edit_proposed': ['pencil-square', 'info'],
+      'field_edit_accepted': ['check-circle', 'theme'],
+      'field_edit_rejected': ['x-circle', 'danger'],
+      'report_edited': ['pencil', 'secondary'],
+    };
+    var info = iconMap[item.action] || ['circle', 'secondary'];
+    var iconColor = (info[1] === 'warning' || info[1] === 'theme') ? '#000' : '#fff';
+
+    var entry = document.createElement('div');
+    entry.className = 'd-flex gap-2 mb-3 position-relative activity-entry';
+    var dot = document.createElement('div');
+    dot.className = 'position-absolute';
+    dot.style.cssText = 'left:-1.5rem;top:0.1rem;';
+    dot.innerHTML = '<div class="rounded-circle d-flex align-items-center justify-content-center bg-' + info[1] +
+      '" style="width:18px;height:18px;"><i class="bi bi-' + info[0] +
+      '" style="font-size:0.55rem;color:' + iconColor + ';"></i></div>';
+    var body = document.createElement('div');
+    body.className = 'flex-1 min-width-0';
+    var label = document.createElement('div');
+    label.className = 'small fw-bold text-inverse';
+    label.textContent = item.label;
+    var ts = document.createElement('div');
+    ts.className = 'text-inverse text-opacity-50';
+    ts.style.fontSize = '0.65rem';
+    ts.textContent = fmtTime(item.created_at);
+    body.appendChild(label);
+    body.appendChild(ts);
+    entry.appendChild(dot);
+    entry.appendChild(body);
+    timeline.appendChild(entry);
+  }
+
+  // Append an item to the discussion thread
+  function appendThreadItem(item) {
+    if (!scroll) return;
+    var div = document.createElement('div');
+    if (item.item_type === 'reply') {
+      var isOwner = item.author_type === 'owner';
+      var isSecTeam = item.author_type === 'security_team';
+      div.className = 'd-flex gap-2 mb-3 thread-reply-item align-items-start' + (isSecTeam ? ' flex-row-reverse' : '');
+      var avatar = document.createElement('div');
+      avatar.className = 'flex-shrink-0';
+      var circle = document.createElement('div');
+      circle.className = 'rounded-circle d-flex align-items-center justify-content-center fw-bold ' +
+        (isOwner ? 'bg-theme' : 'bg-info');
+      circle.style.cssText = 'width:32px;height:32px;font-size:0.7rem;color:#000;';
+      circle.textContent = item.author_name ? item.author_name.charAt(0).toUpperCase() : (isOwner ? 'R' : 'S');
+      avatar.appendChild(circle);
+      var body = document.createElement('div');
+      body.className = 'min-width-0' + (isSecTeam ? ' text-end' : '');
+      body.style.maxWidth = '78%';
+      var meta = document.createElement('div');
+      meta.className = 'd-flex align-items-center gap-2 mb-1 flex-wrap' + (isSecTeam ? ' justify-content-end' : '');
+      var badge = document.createElement('span');
+      badge.className = 'badge ' + (isOwner ? 'bg-theme' : 'bg-info');
+      badge.style.fontSize = '0.65rem';
+      badge.textContent = item.author_name ? item.author_name.substring(0, 24) : '';
+      var roleLabel = document.createElement('span');
+      roleLabel.className = 'text-inverse text-opacity-40';
+      roleLabel.style.fontSize = '0.65rem';
+      roleLabel.textContent = isOwner ? 'Researcher' : 'Security Team';
+      var time = document.createElement('span');
+      time.className = 'text-inverse text-opacity-50';
+      time.style.fontSize = '0.65rem';
+      time.textContent = fmtTime(item.created_at);
+      meta.appendChild(badge);
+      meta.appendChild(roleLabel);
+      meta.appendChild(time);
+      var content = document.createElement('div');
+      content.className = 'd-inline-block p-2 rounded markdown-content small text-start';
+      content.style.cssText = 'max-width:100%;background:' +
+        (isOwner ? 'rgba(0,212,150,0.08)' : 'rgba(0,180,220,0.08)') +
+        ';border-left:2px solid ' +
+        (isOwner ? 'rgba(0,212,150,0.35)' : 'rgba(0,180,220,0.35)') + ';';
+      content.innerHTML = item.body_html;
+      body.appendChild(meta);
+      body.appendChild(content);
+      div.appendChild(avatar);
+      div.appendChild(body);
+    } else if (item.item_type === 'event') {
+      div.className = 'd-flex align-items-center gap-2 mb-2 px-2 py-1 rounded thread-event-item';
+      div.style.cssText = 'background:rgba(0,212,255,0.04);border-left:2px solid rgba(0,212,255,0.2);';
+      var icon = document.createElement('i');
+      icon.className = 'bi bi-' + item.icon + ' text-theme flex-shrink-0';
+      icon.style.fontSize = '0.75rem';
+      var lbl = document.createElement('span');
+      lbl.className = 'small text-inverse text-opacity-75 flex-1';
+      lbl.textContent = item.label;
+      var ts = document.createElement('span');
+      ts.className = 'text-inverse text-opacity-35';
+      ts.style.cssText = 'font-size:0.65rem;white-space:nowrap;';
+      ts.textContent = fmtTime(item.created_at);
+      div.appendChild(icon);
+      div.appendChild(lbl);
+      div.appendChild(ts);
+    }
+    // Remove "no messages" placeholder
+    var placeholder = document.getElementById('portal-no-thread-msg');
+    if (placeholder) placeholder.remove();
+    // Ensure scroll container is in DOM before reply form
+    if (!document.body.contains(scroll)) {
+      var form = scroll.parentElement ? scroll.parentElement.querySelector('form') : null;
+      if (form) form.parentElement.insertBefore(scroll, form);
+    }
+    scroll.appendChild(div);
+    scroll.scrollTop = scroll.scrollHeight;
+  }
+
+  function appendItem(item) {
+    var isTimelineOnly = item.timeline_only === true;
+    // Always add to activity timeline if it's an event
+    if (item.item_type === 'event') {
+      appendTimelineEntry(item);
+    }
+    // Add to discussion thread unless it's timeline-only
+    if (!isTimelineOnly) {
+      appendThreadItem(item);
+    }
+  }
+
+  function doPoll() {
+    fetch(pollUrl + '?since=' + encodeURIComponent(lastSince), {credentials: 'same-origin'})
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) return;
+        if (data.items && data.items.length > 0) {
+          data.items.forEach(appendItem);
+        }
+        lastSince = data.now;
+      })
+      .catch(function() {});
+  }
+
+  // Poll every 8 seconds
+  setInterval(doPoll, 8000);
+})();
+
+// ── Copy to clipboard (bounty payment details) ──
+function copyToClipboard(btn, text) {
+  navigator.clipboard.writeText(text).then(function() {
+    var icon = btn.querySelector('i');
+    icon.className = 'bi bi-check text-theme';
+    setTimeout(function() { icon.className = 'bi bi-clipboard'; }, 1500);
+  }).catch(function() { prompt('Copy this value:', text); });
+}
+
+// ── Crypto network row toggle in compose form ──
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('#compose-form input[name="method"]').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      var row = document.getElementById('compose-crypto-network-row');
+      if (row) row.style.display = (this.value === 'crypto') ? 'block' : 'none';
+    });
+  });
+});
+
+// ── Portal session refresh ──
+function refreshPortalSession() {
+  fetch('{{ url_for("portal.refresh_session", invite_uuid=invite.id) }}', {
+    method: 'GET', credentials: 'same-origin'
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      var el = document.getElementById('portal-session-countdown');
+      if (el) { el.textContent = 'Session refreshed ✓'; setTimeout(function(){el.textContent='';}, 3000); }
+    }
+  }).catch(function() {});
+}
+</script>
+
+{% endblock %}

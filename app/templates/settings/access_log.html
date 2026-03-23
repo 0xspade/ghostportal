@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Access Log — {{ platform_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">ACCESS LOG</h1>
+  <div class="page-actions">
+    <a href="{{ url_for('settings.index') }}" class="btn btn-ghost">← Settings</a>
+  </div>
+</div>
+
+<div class="filter-bar panel">
+  <form method="GET" class="filter-form">
+    <select name="event_type" class="form-control form-select">
+      <option value="">All Events</option>
+      {% for et in ['login_success','login_failed','logout','idle_logout','session_displaced','report_viewed','invite_sent','api_access','rate_limit_hit','suspicious_ua'] %}
+      <option value="{{ et }}" {{ 'selected' if event_type == et }}>{{ et|replace('_',' ')|capitalize }}</option>
+      {% endfor %}
+    </select>
+    <select name="user_type" class="form-control form-select">
+      <option value="">All Users</option>
+      <option value="owner" {{ 'selected' if user_type == 'owner' }}>Owner</option>
+      <option value="security_team" {{ 'selected' if user_type == 'security_team' }}>Security Team</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">Filter</button>
+    <a href="{{ url_for('settings.access_log') }}" class="btn btn-ghost">Clear</a>
+  </form>
+</div>
+
+{% if logs %}
+<div class="panel overflow-x">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>User Type</th>
+        <th>IP</th>
+        <th>Country</th>
+        <th>Browser</th>
+        <th>Event</th>
+        <th>Path</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr class="{{ 'row-danger' if log.event_type in ['login_failed','rate_limit_hit','suspicious_ua'] else 'row-warning' if log.event_type == 'session_displaced' }}">
+        <td class="text-sm text-muted" title="{{ log.created_at.isoformat() if log.created_at }}">
+          {{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at }}
+        </td>
+        <td><span class="badge {{ 'badge-primary' if log.user_type == 'owner' else 'badge-info' }}">{{ log.user_type or '—' }}</span></td>
+        <td class="text-sm font-mono">{{ log.ip_address or '—' }}</td>
+        <td class="text-sm text-muted">{{ log.ip_country or '—' }}</td>
+        <td class="text-sm text-muted" title="{{ log.user_agent or '' }}">{{ (log.ua_browser or '—')|truncate(30) }}</td>
+        <td><span class="badge {{ 'badge-success' if 'success' in (log.event_type or '') else 'badge-danger' if 'fail' in (log.event_type or '') or 'limit' in (log.event_type or '') else 'badge-muted' }}">{{ (log.event_type or '—')|replace('_',' ')|upper }}</span></td>
+        <td class="text-sm font-mono">{{ log.path or '—' }}</td>
+        <td class="text-sm">{{ log.response_code or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="pagination">
+  {% if pagination.has_prev %}
+  <a href="{{ url_for('settings.access_log', page=pagination.prev_num, event_type=event_type, user_type=user_type) }}" class="btn btn-ghost btn-sm">← Prev</a>
+  {% endif %}
+  <span class="page-info">Page {{ pagination.page }} of {{ pagination.pages }}</span>
+  {% if pagination.has_next %}
+  <a href="{{ url_for('settings.access_log', page=pagination.next_num, event_type=event_type, user_type=user_type) }}" class="btn btn-ghost btn-sm">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty-state panel"><p>No access log entries found.</p></div>
+{% endif %}
+{% endblock %}

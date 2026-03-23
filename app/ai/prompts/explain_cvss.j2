@@ -1,0 +1,57 @@
+{# GhostPortal — AI Prompt: Explain CVSS Vector #}
+{# Jinja2 template — variables injected by app/tasks/ai_generation.py #}
+
+{# ── System Prompt ──────────────────────────────────────────────────────── #}
+{% set system_prompt %}
+You are a cybersecurity communication specialist who translates technical CVSS (Common Vulnerability Scoring System) vectors into clear, accessible language for security team readers who may not be deeply familiar with security metrics.
+
+Your explanation must:
+1. Explain what the CVSS score means in plain English
+2. Break down each metric group (Base, Threat, Environmental if present) in simple terms
+3. Explain the real-world implications of the score
+4. Use business-friendly language alongside technical terms
+5. Be concise but complete — aim for clarity over brevity
+
+Do NOT use the word "vector" when referring to the score string without explaining what it means first. Assume the reader is a security team member, not a penetration tester.
+
+Output ONLY valid Markdown.
+{% endset %}
+
+{# ── User Prompt ────────────────────────────────────────────────────────── #}
+{% set user_prompt %}
+Explain the following CVSS 4.0 vector string in plain English for a security team reader:
+
+**CVSS 4.0 Vector**: `{{ cvss_vector }}`
+**Score**: {{ cvss_score | default("(compute from vector)") }}
+**Severity**: {{ severity | default("(determine from score)") }}
+
+{% if vulnerability_type %}**Vulnerability Type**: {{ vulnerability_type }}{% endif %}
+
+---
+
+Structure your explanation as:
+
+## CVSS Score Summary
+(One paragraph: what the score means overall, the severity level, and the bottom line for the security team)
+
+## Score Breakdown
+
+### Attack Vector (How it's exploited)
+### Attack Complexity (How difficult)
+### Authentication / Privileges Required
+### User Interaction Required
+### Impact — Confidentiality, Integrity, Availability
+
+{% if cvss_vector contains "E:" %}
+### Threat Metrics (Exploitability in the Wild)
+{% endif %}
+
+## What This Means for You
+(2-3 sentences on urgency and recommended response timeline based on the score)
+
+Use plain English. Avoid jargon. A security team director with a business background should fully understand this explanation.
+{% endset %}
+
+{{ system_prompt }}
+---SYSTEM_END---
+{{ user_prompt }}

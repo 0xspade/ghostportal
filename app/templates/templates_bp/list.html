@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Report Templates — {{ platform_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <h1 class="page-header-title fw-bold mb-0">REPORT TEMPLATES</h1>
+  <div class="ms-auto">
+    <a href="{{ url_for('templates.new_template') }}" class="btn btn-theme">
+      <i class="bi bi-plus-lg me-1"></i>New Template
+    </a>
+  </div>
+</div>
+
+{% if templates %}
+<div class="card mb-3">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-card table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Name</th>
+          <th>Category</th>
+          <th>CWE</th>
+          <th>Severity</th>
+          <th>Type</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in templates %}
+        <tr>
+          <td class="fw-bold">{{ t.name }}</td>
+          <td><span class="badge bg-info">{{ t.category|capitalize }}</span></td>
+          <td class="small text-inverse text-opacity-75">
+            {% if t.cwe_id %}CWE-{{ t.cwe_id }}{% if t.cwe_name %}: {{ t.cwe_name|truncate(40) }}{% endif %}{% else %}—{% endif %}
+          </td>
+          <td>
+            {% if t.severity %}
+            {% if t.severity == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+            {% elif t.severity == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+            {% elif t.severity == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+            {% elif t.severity == 'low' %}<span class="badge bg-info">LOW</span>
+            {% else %}<span class="badge bg-secondary">INFO</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if t.is_builtin %}
+            <span class="badge bg-secondary"><i class="bi bi-box me-1"></i>Built-in</span>
+            {% else %}
+            <span class="badge bg-theme"><i class="bi bi-person me-1"></i>Custom</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <a href="{{ url_for('templates.view_template', template_uuid=t.id) }}" class="btn btn-outline-theme btn-sm">
+                <i class="bi bi-pencil me-1"></i>Edit
+              </a>
+              <a href="{{ url_for('templates.export_template', template_uuid=t.id) }}" class="btn btn-outline-theme btn-sm">
+                <i class="bi bi-download me-1"></i>Export
+              </a>
+              {% if not t.is_builtin %}
+              <form method="POST" action="{{ url_for('templates.delete_template', template_uuid=t.id) }}" class="d-inline"
+                    onsubmit="return confirm('Delete this template?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-danger btn-sm">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-body text-center py-5">
+    <i class="bi bi-layout-text-window text-inverse text-opacity-25 mb-3" style="font-size:3rem; display:block;"></i>
+    <p class="text-inverse text-opacity-50 mb-3">No templates yet.</p>
+    <a href="{{ url_for('templates.new_template') }}" class="btn btn-theme">
+      <i class="bi bi-plus-lg me-1"></i>Create One
+    </a>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if template else 'New' }} Template — {{ platform_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <h1 class="page-header-title fw-bold mb-0">{{ 'EDIT' if template else 'NEW' }} TEMPLATE</h1>
+  <div class="ms-auto">
+    <a href="{{ url_for('templates.list_templates') }}" class="btn btn-light">
+      <i class="bi bi-arrow-left me-1"></i>Templates
+    </a>
+  </div>
+</div>
+
+<form method="POST" action="{{ url_for('templates.edit_template', template_uuid=template.id) if template else url_for('templates.new_template') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <i class="bi bi-info-circle me-2 text-theme"></i>Template Info
+    </div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label class="form-label fw-bold">Template Name <span class="text-danger">*</span></label>
+          <input type="text" name="name" class="form-control" maxlength="200" required
+                 value="{{ template.name if template else '' }}" placeholder="e.g. Reflected XSS">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold">Category</label>
+          <select name="category" class="form-select">
+            {% for cat in ['web','api','mobile','web3','network','physical','social_engineering','custom'] %}
+            <option value="{{ cat }}" {{ 'selected' if template and template.category == cat }}>{{ cat|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-bold">Title Template</label>
+        <input type="text" name="title_template" class="form-control" maxlength="500"
+               value="{{ template.title_template if template else '' }}"
+               placeholder="e.g. Reflected XSS in [parameter] on [endpoint]">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <i class="bi bi-file-text me-2 text-theme"></i>Report Sections
+    </div>
+    <div class="card-body">
+      {% macro tmpl_field(name, label, val) %}
+      <div class="mb-3">
+        <label class="form-label fw-bold small">{{ label }}</label>
+        <textarea name="{{ name }}" class="form-control font-monospace" rows="5">{{ val or '' }}</textarea>
+      </div>
+      {% endmacro %}
+      {{ tmpl_field('description_template', 'Description Template', template.description_template if template) }}
+      {{ tmpl_field('steps_template', 'Steps Template', template.steps_template if template) }}
+      {{ tmpl_field('poc_template', 'PoC Template', template.poc_template if template) }}
+      {{ tmpl_field('remediation_template', 'Remediation Template', template.remediation_template if template) }}
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <i class="bi bi-shield me-2 text-theme"></i>Classification Defaults
+    </div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-2">
+          <label class="form-label fw-bold small">CWE ID</label>
+          <input type="number" name="cwe_id" class="form-control" min="1" max="9999"
+                 value="{{ template.cwe_id if template else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold small">CWE Name</label>
+          <input type="text" name="cwe_name" class="form-control" maxlength="300"
+                 value="{{ template.cwe_name if template else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold small">Default Severity</label>
+          <select name="severity" class="form-select">
+            <option value="">—</option>
+            {% for s in ['critical','high','medium','low','informational'] %}
+            <option value="{{ s }}" {{ 'selected' if template and template.severity == s }}>{{ s|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">CVSS Vector</label>
+        <input type="text" name="cvss_vector" class="form-control font-monospace" maxlength="500"
+               value="{{ template.cvss_vector if template else '' }}" placeholder="CVSS:4.0/AV:N/...">
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-bold small">Tags (JSON array)</label>
+        <input type="text" name="tags" class="form-control font-monospace" placeholder='["XSS","OWASP Top 10"]'
+               value="{{ template.tags|tojson if template and template.tags else '[]' }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-footer d-flex">
+      <a href="{{ url_for('templates.list_templates') }}" class="btn btn-light">Cancel</a>
+      <button type="submit" class="btn btn-theme ms-auto">
+        <i class="bi bi-check me-1"></i>{{ 'Save Changes' if template else 'Create Template' }}
+      </button>
+    </div>
+  </div>
+
+</form>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Privacy Policy — {{ platform_name }}{% endblock %}
+{% block content %}
+<div class="legal-page">
+  <div class="legal-header">
+    <h1>Privacy Policy</h1>
+    <p class="text-muted">{{ platform_name }} · Version {{ policy_version }} · Last updated {{ policy_last_updated }}</p>
+  </div>
+
+  <div class="panel legal-content">
+    <h2>1. Data Controller</h2>
+    <p><strong>{{ operator_name }}</strong><br>
+    Contact: <a href="mailto:{{ operator_email }}">{{ operator_email }}</a><br>
+    Jurisdiction: {{ operator_country }}</p>
+
+    <h2>2. Data We Collect</h2>
+    <table class="data-table">
+      <thead><tr><th>Data</th><th>Purpose</th><th>Legal Basis</th></tr></thead>
+      <tbody>
+        <tr><td>Email address</td><td>Authentication, notifications</td><td>Legitimate interest / Contract</td></tr>
+        <tr><td>IP address</td><td>Security audit, access logging</td><td>Legitimate interest</td></tr>
+        <tr><td>User-Agent string</td><td>Security audit, bot detection</td><td>Legitimate interest</td></tr>
+        <tr><td>Report content &amp; attachments</td><td>Core service delivery</td><td>Contract</td></tr>
+        <tr><td>Session data</td><td>Authentication</td><td>Contract</td></tr>
+      </tbody>
+    </table>
+
+    <h2>3. How We Use Your Data</h2>
+    <ul>
+      <li>Authenticate users via magic link (passwordless)</li>
+      <li>Send vulnerability report notifications</li>
+      <li>Maintain security audit logs</li>
+      <li>Follow up on submitted reports</li>
+      <li>Comply with legal obligations</li>
+    </ul>
+
+    <h2>4. Data Sharing</h2>
+    <p>Your data is not shared with third parties except: SMTP provider (email delivery), and AI providers if AI generation is enabled (report content may be sent to the selected AI API). No advertising, no data sales, no unauthorized tracking.</p>
+
+    <h2>5. Data Retention</h2>
+    <ul>
+      <li>Active reports: retained until manually deleted</li>
+      <li>Resolved reports: retained for 1 year after resolution</li>
+      <li>Access logs: retained for 2 years</li>
+      <li>Expired portal sessions: purged 90 days after expiry</li>
+    </ul>
+
+    <h2>6. Your Rights</h2>
+    <p>Under GDPR and Philippine Republic Act 10173 (Data Privacy Act of 2012), you have the right to:</p>
+    <ul>
+      <li>Access your personal data</li>
+      <li>Correction / rectification</li>
+      <li>Erasure (where legally permitted — audit logs may be retained)</li>
+      <li>Data portability</li>
+      <li>Object to processing</li>
+      <li>Lodge a complaint with your supervisory authority</li>
+    </ul>
+    <p>Philippine residents may lodge complaints with the <strong>National Privacy Commission</strong> at <a href="https://privacy.gov.ph" rel="noopener noreferrer" target="_blank">privacy.gov.ph</a>.</p>
+
+    <h2>7. Cookies &amp; Storage</h2>
+    <p>We use session cookies only: <code>gp_session</code> (owner) and <code>gp_portal</code> (security team). Both are HttpOnly, Secure, and set with appropriate SameSite policy. No third-party cookies, no advertising cookies, no analytics cookies.</p>
+
+    <h2>8. Security Measures</h2>
+    <p>Magic link (passwordless) authentication, CSRF protection, hCaptcha, AES-256-GCM backup encryption, TLS in transit, access logging, rate limiting, and server-side session management.</p>
+
+    <h2>9. International Transfers</h2>
+    <p>If AI providers are configured outside the operator's country, report content may be transferred to those providers' servers. The operator is responsible for ensuring this complies with applicable data protection law.</p>
+
+    <h2>10. Children's Data</h2>
+    <p>This platform is not intended for use by persons under 18. No data is knowingly collected from minors.</p>
+
+    <h2>11. Contact &amp; DPO</h2>
+    <p>Data privacy inquiries: <a href="mailto:{{ operator_email }}">{{ operator_email }}</a></p>
+  </div>
+</div>
+{% endblock %}

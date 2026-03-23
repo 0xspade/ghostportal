@@ -1,0 +1,92 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+!.env.docker.example
+CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Database
+*.db
+*.sqlite3
+instance/
+
+# Uploads (user data)
+uploads/
+!uploads/.gitkeep
+
+# Logs
+logs/
+*.log
+*.jsonl
+
+# GeoIP database
+GeoLite2-*.mmdb
+
+# Audit output
+audit/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# WeasyPrint cache
+.weasyprint/
+
+# SSL / TLS certificates (never commit private keys)
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+
+# Type checking cache
+.mypy_cache/
+.ruff_cache/
+
+# Audit reports (generated, not committed)
+pip-audit-report*
+bandit-report*
+
+# Node (if any JS tooling is added later)
+node_modules/
+
+# OS
+*.DS_Store
+desktop.ini
+
+# Build
+*.tar.gz
+*.zip
+!docker/.env.docker.example

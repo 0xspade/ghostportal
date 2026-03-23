@@ -1,0 +1,15 @@
+{% extends "base_email.html" %}
+{% block subject %}[{{ platform_name }}] Bug Bounty Payment — {{ amount }} {{ currency }} via PayPal{% endblock %}
+{% block body %}
+<h2>Bug Bounty Payment Sent</h2>
+<p>A bug bounty payment has been initiated for vulnerability report <strong>{{ report.display_id }}</strong>.</p>
+<div class="severity-card">
+  <div class="meta-row"><span class="meta-key">Report</span><span class="meta-val">{{ report.display_id }}</span></div>
+  <div class="meta-row"><span class="meta-key">Amount</span><span class="meta-val" style="color:#00ff88;">{{ amount }} {{ currency }}</span></div>
+  <div class="meta-row"><span class="meta-key">Method</span><span class="meta-val">PayPal</span></div>
+  <div class="meta-row"><span class="meta-key">Recipient</span><span class="meta-val">{{ recipient_email }}</span></div>
+  {% if batch_id %}<div class="meta-row"><span class="meta-key">Batch ID</span><span class="meta-val"><code>{{ batch_id }}</code></span></div>{% endif %}
+  <div class="meta-row"><span class="meta-key">Status</span><span class="meta-val">{{ status|upper }}</span></div>
+</div>
+<div class="notice-box"><p class="notice-text">PayPal payouts may take 1-3 business days to complete. Check your PayPal account for the payment.</p></div>
+{% endblock %}

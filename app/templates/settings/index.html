@@ -1,0 +1,558 @@
+{% extends "base.html" %}
+{% block title %}Settings — {{ platform_name }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet"
+      href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap5.min.css"
+      crossorigin="anonymous">
+{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <h1 class="page-header-title fw-bold mb-0">SETTINGS</h1>
+</div>
+
+{# ── Section Nav Pills ──────────────────────────────────────────── #}
+<div class="mb-4">
+  <ul class="nav nav-pills flex-wrap gap-1">
+    <li class="nav-item">
+      <a class="nav-link active" href="#auth-section" onclick="scrollTo(this)">
+        <i class="bi bi-shield-lock me-1"></i>Auth & Security
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#smtp-section" onclick="scrollTo(this)">
+        <i class="bi bi-envelope me-1"></i>SMTP / Email
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#notifications-section" onclick="scrollTo(this)">
+        <i class="bi bi-bell me-1"></i>Notifications
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#ai-section" onclick="scrollTo(this)">
+        <i class="bi bi-cpu me-1"></i>AI Config
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#followup-section" onclick="scrollTo(this)">
+        <i class="bi bi-arrow-repeat me-1"></i>Follow-Up
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#csp-section" onclick="scrollTo(this)">
+        <i class="bi bi-file-earmark-text me-1"></i>CSP Log
+      </a>
+    </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#backup-section" onclick="scrollTo(this)">
+        <i class="bi bi-archive me-1"></i>Backup
+      </a>
+    </li>
+  </ul>
+</div>
+
+{# ── Authentication & Security ──────────────────────────────────── #}
+<div class="card mb-4" id="auth-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-shield-lock me-2 text-theme"></i>Authentication & Security
+  </div>
+  <div class="card-body">
+
+    {# Read-only env settings #}
+    <div class="row g-3 mb-3">
+      <div class="col-md-6">
+        <label class="form-label fw-bold small">Magic Link OTP Length</label>
+        <div class="input-group">
+          <span class="input-group-text bg-inverse bg-opacity-10"><i class="bi bi-key"></i></span>
+          <input type="text" class="form-control" value="{{ config.MAGIC_LINK_OTP_LENGTH }} characters" readonly>
+          <span class="input-group-text bg-inverse bg-opacity-10 text-inverse text-opacity-50 small">set in .env</span>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-bold small">Magic Link Expiry</label>
+        <div class="input-group">
+          <span class="input-group-text bg-inverse bg-opacity-10"><i class="bi bi-clock"></i></span>
+          <input type="text" class="form-control" value="{{ config.MAGIC_LINK_EXPIRY_MINUTES }} minutes" readonly>
+          <span class="input-group-text bg-inverse bg-opacity-10 text-inverse text-opacity-50 small">set in .env</span>
+        </div>
+      </div>
+    </div>
+
+    {# Idle Timeout #}
+    <form method="POST" action="{{ url_for('settings.save_idle_timeout') }}" class="mb-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label fw-bold small">Idle Timeout</label>
+      <div class="input-group" style="max-width:360px;">
+        <input type="number" name="idle_timeout_seconds" class="form-control"
+               min="0" max="3600" value="{{ config_vals.idle_timeout }}">
+        <span class="input-group-text bg-inverse bg-opacity-10 text-inverse text-opacity-50 small">seconds (0 = disabled)</span>
+        <button type="submit" class="btn btn-outline-theme btn-sm">Save</button>
+      </div>
+    </form>
+
+    {# Single Session #}
+    <form method="POST" action="{{ url_for('settings.save_single_session') }}" class="mb-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label fw-bold small d-block">Single Session Enforcement</label>
+      <div class="d-flex align-items-center gap-3">
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" name="single_session_enforce" id="singleSessionSwitch"
+                 {{ 'checked' if config_vals.single_session }}>
+          <label class="form-check-label text-inverse text-opacity-50 small" for="singleSessionSwitch">
+            New login invalidates previous session
+          </label>
+        </div>
+        <button type="submit" class="btn btn-outline-theme btn-sm">Save</button>
+      </div>
+    </form>
+
+    {# Active Portal Sessions #}
+    <h6 class="fw-bold text-inverse text-opacity-75 mb-2">
+      <i class="bi bi-people me-1"></i>Active Portal Sessions
+    </h6>
+    {% if active_sessions %}
+    <div class="table-responsive mb-3">
+      <table class="table table-borderless table-sm mb-0">
+        <thead>
+          <tr class="text-inverse text-opacity-50 small">
+            <th>Email</th><th>Company</th><th>IP</th><th>Last Seen</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sess in active_sessions %}
+          <tr>
+            <td class="small">{{ sess.member.email if sess.member else '—' }}</td>
+            <td class="small">{{ sess.member.company_name if sess.member else '—' }}</td>
+            <td class="small font-monospace">{{ sess.last_activity_ip or sess.ip_address or '—' }}</td>
+            <td class="small text-inverse text-opacity-50">
+              {{ sess.last_seen.strftime('%Y-%m-%d %H:%M') if sess.last_seen else '—' }}
+            </td>
+            <td>
+              <form method="POST" action="{{ url_for('settings.revoke_session', session_uuid=sess.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-danger btn-sm py-0 px-2">Revoke</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-inverse text-opacity-50 small mb-3">No active portal sessions.</p>
+    {% endif %}
+
+    {# Recent Login Attempts #}
+    <h6 class="fw-bold text-inverse text-opacity-75 mb-2">
+      <i class="bi bi-clock-history me-1"></i>Recent Login Attempts
+    </h6>
+    {% if recent_logins %}
+    <div class="table-responsive">
+      <table id="login-attempts-table" class="table table-borderless table-sm mb-0" style="width:100%">
+        <thead>
+          <tr class="text-inverse text-opacity-50 small">
+            <th>Time</th><th>Type</th><th>IP</th><th>Result</th><th>UA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in recent_logins %}
+          <tr class="{{ 'table-danger bg-opacity-10' if log.event_type == 'login_failed' }}">
+            <td class="small text-inverse text-opacity-50">
+              {{ log.created_at.strftime('%Y-%m-%d %H:%M') }}
+            </td>
+            <td class="small">{{ log.user_type or '—' }}</td>
+            <td class="small font-monospace">{{ log.ip_address or '—' }}</td>
+            <td>
+              {% if log.event_type == 'login_success' %}
+              <span class="badge bg-theme">SUCCESS</span>
+              {% else %}
+              <span class="badge bg-danger">FAILED</span>
+              {% endif %}
+            </td>
+            <td class="small text-inverse text-opacity-50" title="{{ log.user_agent or '' }}">
+              {{ (log.ua_browser or log.user_agent or '—')|truncate(60) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-inverse text-opacity-50 small mb-0">No recent login attempts.</p>
+    {% endif %}
+
+  </div>
+</div>
+
+{# ── SMTP / Email ──────────────────────────────────────────────── #}
+<div class="card mb-4" id="smtp-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-envelope me-2 text-theme"></i>SMTP & Email
+  </div>
+  <div class="card-body">
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <label class="form-label fw-bold small">Mail Server</label>
+        <input type="text" class="form-control font-monospace"
+               value="{{ (config.MAIL_SERVER or '—') ~ ':' ~ (config.MAIL_PORT or 587) }}" readonly>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-bold small">Default Sender</label>
+        <input type="text" class="form-control font-monospace"
+               value="{{ config.MAIL_DEFAULT_SENDER or '—' }}" readonly>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label fw-bold small">TLS</label>
+        <div class="form-control d-flex align-items-center gap-2">
+          {% if config.MAIL_USE_TLS %}
+          <i class="bi bi-check-circle-fill text-theme"></i>
+          <span class="small">Enabled</span>
+          {% else %}
+          <i class="bi bi-x-circle-fill text-danger"></i>
+          <span class="small">Disabled</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <form method="POST" action="{{ url_for('settings.test_email') }}" style="display:inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-outline-theme">
+        <i class="bi bi-send me-2"></i>Send Test Email
+      </button>
+    </form>
+  </div>
+</div>
+
+{# ── Notification Channels ─────────────────────────────────────── #}
+<div class="card mb-4" id="notifications-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-bell me-2 text-theme"></i>Notification Channels
+  </div>
+  <div class="card-body">
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label fw-bold small">Discord Webhook</label>
+        <div class="d-flex align-items-center gap-2">
+          {% if config.DISCORD_WEBHOOK_URL %}
+          <span class="badge bg-theme">Configured</span>
+          <form method="POST" action="{{ url_for('settings.test_discord') }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-theme btn-sm">
+              <i class="bi bi-send me-1"></i>Test
+            </button>
+          </form>
+          {% else %}
+          <span class="badge bg-secondary">Not configured</span>
+          <span class="text-inverse text-opacity-50 small">Set DISCORD_WEBHOOK_URL in .env</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-bold small">Telegram Bot</label>
+        <div class="d-flex align-items-center gap-2">
+          {% if config.TELEGRAM_BOT_TOKEN %}
+          <span class="badge bg-theme">Configured</span>
+          <form method="POST" action="{{ url_for('settings.test_telegram') }}" style="display:inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-theme btn-sm">
+              <i class="bi bi-send me-1"></i>Test
+            </button>
+          </form>
+          {% else %}
+          <span class="badge bg-secondary">Not configured</span>
+          <span class="text-inverse text-opacity-50 small">Set TELEGRAM_BOT_TOKEN in .env</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ── AI Configuration ──────────────────────────────────────────── #}
+<div class="card mb-4" id="ai-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-cpu me-2 text-theme"></i>AI Configuration
+  </div>
+  <div class="card-body">
+
+    {% set providers = {'anthropic': config.ANTHROPIC_API_KEY, 'openai': config.OPENAI_API_KEY, 'gemini': config.GEMINI_API_KEY, 'ollama': config.OLLAMA_BASE_URL} %}
+    <div class="row g-3 mb-4">
+      {% for name, key in providers.items() %}
+      <div class="col-md-3">
+        <label class="form-label fw-bold small">{{ name|capitalize }}</label>
+        <div class="d-flex align-items-center gap-2">
+          {% if key %}
+          <span class="badge bg-theme">Configured</span>
+          {% else %}
+          <span class="badge bg-secondary">Not configured</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <label class="form-label fw-bold small">Test AI Generation</label>
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <select id="test-ai-provider" class="form-select" style="max-width:200px;">
+        {% for name, key in providers.items() %}
+        {% if key %}<option value="{{ name }}">{{ name|capitalize }}</option>{% endif %}
+        {% endfor %}
+      </select>
+      <button class="btn btn-outline-theme" onclick="testAI()">
+        <i class="bi bi-play me-1"></i>Test
+      </button>
+    </div>
+    <div id="ai-test-result" class="alert" style="display:none;"></div>
+
+    <div class="alert alert-warning mt-3 small mb-0">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      <strong>AI Safety Notice:</strong> Report content is sent to AI providers when using AI generation.
+      Review your Privacy Policy obligations regarding data transfers to AI APIs.
+    </div>
+
+  </div>
+</div>
+
+{# ── Follow-Up & Access Expiry ─────────────────────────────────── #}
+<div class="card mb-4" id="followup-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-arrow-repeat me-2 text-theme"></i>Follow-Up & Access Expiry
+  </div>
+  <div class="card-body">
+
+    <form method="POST" action="{{ url_for('settings.save_followup') }}" class="mb-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="mb-3">
+        <label class="form-label fw-bold small">Default Follow-Up Schedule</label>
+        <div class="d-flex gap-3">
+          {% for d in [30, 60, 90] %}
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="followup_{{ d }}" value="{{ d }}"
+                   id="followup-day-{{ d }}"
+                   {{ 'checked' if d in config_vals.followup_schedule }}>
+            <label class="form-check-label small" for="followup-day-{{ d }}">Day {{ d }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="followup_skip_if_replied"
+               id="skipIfReplied" {{ 'checked' if config_vals.followup_skip }}>
+        <label class="form-check-label small" for="skipIfReplied">
+          Skip follow-up if security team has already replied
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-theme">
+        <i class="bi bi-check me-1"></i>Save Follow-Up Settings
+      </button>
+    </form>
+
+    <hr class="border-inverse border-opacity-10">
+
+    <form method="POST" action="{{ url_for('settings.save_resolved_expiry') }}" class="mt-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label fw-bold small">
+        Resolved Access Expiry
+        <span class="text-inverse text-opacity-50">(10–15 days)</span>
+      </label>
+      <div class="input-group" style="max-width:360px;">
+        <input type="number" name="resolved_access_expiry_days" class="form-control"
+               min="10" max="15" value="{{ config_vals.resolved_expiry }}">
+        <span class="input-group-text bg-inverse bg-opacity-10 text-inverse text-opacity-50 small">
+          days after all reports resolved
+        </span>
+        <button type="submit" class="btn btn-outline-theme btn-sm">Save</button>
+      </div>
+    </form>
+
+  </div>
+</div>
+
+{# ── CSP Violation Log ─────────────────────────────────────────── #}
+<div class="card mb-4" id="csp-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold d-flex align-items-center">
+    <span><i class="bi bi-file-earmark-text me-2 text-theme"></i>CSP Violation Log</span>
+    {% if recent_csp %}
+    <form method="POST" action="{{ url_for('settings.clear_csp_log') }}" class="ms-auto"
+          onsubmit="return confirm('Clear all CSP violation logs?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-danger btn-sm">
+        <i class="bi bi-trash me-1"></i>Clear Log
+      </button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if recent_csp %}
+    <div class="table-responsive">
+      <table class="table table-borderless table-sm mb-0">
+        <thead>
+          <tr class="text-inverse text-opacity-50 small">
+            <th>Time</th><th>Blocked URI</th><th>Directive</th><th>Document URI</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in recent_csp %}
+          <tr>
+            <td class="small text-inverse text-opacity-50">
+              {{ v.created_at.strftime('%Y-%m-%d %H:%M') if v.created_at }}
+            </td>
+            <td class="small font-monospace text-break">{{ (v.blocked_uri or '—')|truncate(50) }}</td>
+            <td class="small"><code>{{ v.violated_directive or '—' }}</code></td>
+            <td class="small text-inverse text-opacity-50 text-break">
+              {{ (v.document_uri or '—')|truncate(60) }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-inverse text-opacity-50 small mb-0">No CSP violations recorded.</p>
+    {% endif %}
+  </div>
+</div>
+
+{# ── Backup & Restore ──────────────────────────────────────────── #}
+<div class="card mb-4" id="backup-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-archive me-2 text-theme"></i>Backup & Restore
+  </div>
+  <div class="card-body">
+
+    <div class="mb-4">
+      <h6 class="fw-bold small mb-2">Download Encrypted Backup</h6>
+      <form method="POST" action="{{ url_for('reports.backup') }}" style="display:inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-theme">
+          <i class="bi bi-download me-2"></i>Download Encrypted Backup
+        </button>
+      </form>
+      <p class="text-inverse text-opacity-50 small mt-2 mb-0">
+        AES-256-GCM encrypted ZIP of all reports and attachments.
+      </p>
+    </div>
+
+    <hr class="border-inverse border-opacity-10">
+
+    <div class="mt-4">
+      <h6 class="fw-bold small mb-3">Restore from Backup</h6>
+      <form method="POST" action="{{ url_for('reports.restore') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="mb-3">
+          <label class="form-label fw-bold small">Backup ZIP File</label>
+          <input type="file" name="backup_file" class="form-control bg-inverse bg-opacity-5"
+                 accept=".zip" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold small">Encryption Key</label>
+          <input type="password" name="encryption_key" class="form-control bg-inverse bg-opacity-5 font-monospace"
+                 placeholder="Your backup encryption key" required>
+        </div>
+        <button type="submit" class="btn btn-light"
+                onclick="return confirm('Restore from backup? This will import data.')">
+          <i class="bi bi-upload me-2"></i>Restore Backup
+        </button>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function testAI() {
+  var provider = document.getElementById('test-ai-provider').value;
+  var result = document.getElementById('ai-test-result');
+  result.style.display = 'block';
+  result.className = 'alert alert-info';
+  result.textContent = 'Testing...';
+  var form = new FormData();
+  form.append('provider', provider);
+  fetch('{{ url_for("settings.test_ai") }}', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token() }}' },
+    body: form
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) {
+      result.className = 'alert alert-success';
+      result.textContent = '\u2713 ' + d.text + ' (tokens: ' + (d.tokens || '\u2014') + ')';
+    } else {
+      result.className = 'alert alert-danger';
+      result.textContent = '\u2717 ' + d.error;
+    }
+  }).catch(function(e){
+    result.className = 'alert alert-danger';
+    result.textContent = '\u2717 Request failed: ' + e.message;
+  });
+}
+
+function scrollTo(el) {
+  var target = document.querySelector(el.getAttribute('href'));
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  document.querySelectorAll('.nav-link').forEach(function(a){ a.classList.remove('active'); });
+  el.classList.add('active');
+  return false;
+}
+</script>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js" crossorigin="anonymous"></script>
+<script>
+$(document).ready(function() {
+  var tbl = document.getElementById('login-attempts-table');
+  if (tbl) {
+    $(tbl).DataTable({
+      order: [[0, 'desc']],
+      pageLength: 15,
+      lengthMenu: [10, 15, 25, 50],
+      language: {
+        search: 'Filter:',
+        emptyTable: 'No recent login attempts.'
+      },
+      columnDefs: [
+        { orderable: false, targets: [4] }
+      ]
+    });
+  }
+});
+</script>
+{% endblock %}

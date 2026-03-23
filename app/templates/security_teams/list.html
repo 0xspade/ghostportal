@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}Security Teams — {{ platform_name }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <h1 class="page-header-title fw-bold mb-0">SECURITY TEAM MANAGEMENT</h1>
+</div>
+
+{% if invites %}
+<div class="card mb-3">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-card table-hover mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Company</th>
+          <th>Email</th>
+          <th>Report</th>
+          <th>Severity</th>
+          <th>Status</th>
+          <th>Last Activity</th>
+          <th>Expiry</th>
+          <th>Follow-Ups</th>
+          <th>Health</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invites %}
+        {% set report = inv.report %}
+        {% set _closed_statuses = ['duplicate', 'wont_fix', 'informative', 'resolved', 'not_applicable'] %}
+        {% set _is_closed = report and report.status in _closed_statuses %}
+        <tr {% if _is_closed %}style="opacity:0.65;"{% endif %}>
+          <td class="fw-bold">{{ inv.company_name or '—' }}</td>
+          <td class="text-inverse text-opacity-50 small">{{ inv.email }}</td>
+          <td>
+            {% if report %}
+            <a href="{{ url_for('reports.view_report', report_uuid=report.id) }}" class="text-theme text-decoration-none">
+              <code>{{ report.display_id }}</code>
+            </a>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if report and report.severity %}
+            {% if report.severity == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+            {% elif report.severity == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+            {% elif report.severity == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+            {% elif report.severity == 'low' %}<span class="badge bg-info">LOW</span>
+            {% else %}<span class="badge bg-secondary">INFO</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if report %}
+            {% set s = report.status %}
+            {% if s == 'draft' %}<span class="badge bg-secondary">DRAFT</span>
+            {% elif s == 'submitted' %}<span class="badge bg-primary">SUBMITTED</span>
+            {% elif s == 'triaged' %}<span class="badge bg-warning text-dark">TRIAGED</span>
+            {% elif s == 'duplicate' %}<span class="badge bg-secondary">DUPLICATE</span>
+            {% elif s == 'informative' %}<span class="badge bg-info">INFORMATIVE</span>
+            {% elif s == 'resolved' %}<span class="badge bg-theme">RESOLVED</span>
+            {% elif s == 'wont_fix' %}<span class="badge bg-danger">WON'T FIX</span>
+            {% elif s == 'not_applicable' %}<span class="badge bg-secondary">NOT APPLICABLE</span>
+            {% else %}<span class="badge bg-secondary">{{ s|upper }}</span>{% endif %}
+            {% if _is_closed %}<span class="badge bg-secondary ms-1" style="font-size:0.55rem;vertical-align:middle;">CLOSED</span>{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-inverse text-opacity-50 small" title="{{ inv.last_activity_at.isoformat() if inv.last_activity_at }}">
+            {{ inv.last_activity_at.strftime('%Y-%m-%d') if inv.last_activity_at else 'Never' }}
+          </td>
+          <td class="small {% if inv.expires_at and (inv.expires_at - now).days < 7 %}text-warning fw-bold{% else %}text-inverse text-opacity-75{% endif %}">
+            {{ inv.expires_at.strftime('%Y-%m-%d') if inv.expires_at else '—' }}
+            {% if inv.expires_at and (inv.expires_at - now).days < 7 %}
+            <span class="badge bg-warning text-dark ms-1">EXPIRING</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex gap-1">
+              <span class="badge {% if inv.followup_30_sent_at %}bg-theme{% else %}bg-inverse bg-opacity-25{% endif %}">30d</span>
+              <span class="badge {% if inv.followup_60_sent_at %}bg-theme{% else %}bg-inverse bg-opacity-25{% endif %}">60d</span>
+              <span class="badge {% if inv.followup_90_sent_at %}bg-theme{% else %}bg-inverse bg-opacity-25{% endif %}">90d</span>
+            </div>
+          </td>
+          <td>
+            {% if inv._health == 'green' %}
+            <span class="badge bg-theme"><i class="bi bi-circle-fill me-1" style="font-size:8px;"></i>Active</span>
+            {% elif inv._health == 'amber' %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-circle-fill me-1" style="font-size:8px;"></i>Idle</span>
+            {% else %}
+            <span class="badge bg-danger"><i class="bi bi-circle-fill me-1" style="font-size:8px;"></i>Unresponsive</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="d-flex gap-1 flex-wrap">
+              {% if inv.is_locked %}
+              <form method="POST" action="{{ url_for('security_teams.unlock', invite_uuid=inv.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-theme btn-sm" title="Unlock">
+                  <i class="bi bi-unlock"></i>
+                </button>
+              </form>
+              {% else %}
+              <button class="btn btn-outline-warning btn-sm" onclick="showLockModal('{{ inv.id }}')" title="Lock">
+                <i class="bi bi-lock"></i>
+              </button>
+              {% endif %}
+
+              <form method="POST" action="{{ url_for('security_teams.extend', invite_uuid=inv.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-theme btn-sm" title="Extend">+30d</button>
+              </form>
+
+              <button class="btn btn-outline-theme btn-sm"
+                      onclick="showEditModal('{{ inv.id }}','{{ inv.company_name or '' }}','{{ inv.email }}')"
+                      title="Edit">
+                <i class="bi bi-pencil"></i>
+              </button>
+
+              <button class="btn btn-outline-theme btn-sm"
+                      onclick="showActivityModal('{{ inv.id }}', '{{ inv.company_name or inv.email }}')"
+                      title="Activity Log">
+                <i class="bi bi-list-ul"></i>
+              </button>
+
+              <button class="btn btn-outline-danger btn-sm" onclick="showDeleteModal('{{ inv.id }}')" title="Delete">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-body text-center py-5">
+    <i class="bi bi-people text-inverse text-opacity-25 mb-3" style="font-size:3rem; display:block;"></i>
+    <p class="text-inverse text-opacity-50 mb-0">No security team members yet. Send invites from report pages.</p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Lock Modal -->
+<div class="modal fade" id="lock-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-lock me-2 text-warning"></i>Lock Account</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="lock-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Lock Reason</label>
+            <textarea name="reason" class="form-control" rows="3" placeholder="Reason for locking..." maxlength="500"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning"><i class="bi bi-lock me-1"></i>Lock Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="edit-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-pencil me-2 text-theme"></i>Edit Invite</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="edit-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Company Name</label>
+            <input type="text" name="company_name" id="edit-company" class="form-control" maxlength="200">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Email</label>
+            <input type="email" name="email" id="edit-email" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-theme"><i class="bi bi-check me-1"></i>Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Activity Log Modal -->
+<div class="modal fade" id="activity-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-list-ul me-2 text-theme"></i>
+          Activity Log — <span id="activity-modal-title"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="max-height:65vh;overflow-y:auto;" id="activity-modal-body">
+        <div class="text-center py-4 text-inverse text-opacity-50" id="activity-modal-loading">
+          <div class="spinner-border spinner-border-sm me-2"></div>Loading activity...
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Modal -->
+<div class="modal fade" id="delete-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header border-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-trash me-2 text-danger"></i>Delete Invite</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="delete-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            This will deactivate the invite and redact all replies. This cannot be undone.
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger"><i class="bi bi-trash me-1"></i>Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function showLockModal(id) {
+  document.getElementById('lock-form').action = '/security-teams/' + id + '/lock';
+  new bootstrap.Modal(document.getElementById('lock-modal')).show();
+}
+function showEditModal(id, company, email) {
+  document.getElementById('edit-form').action = '/security-teams/' + id + '/edit';
+  document.getElementById('edit-company').value = company;
+  document.getElementById('edit-email').value = email;
+  new bootstrap.Modal(document.getElementById('edit-modal')).show();
+}
+function showDeleteModal(id) {
+  document.getElementById('delete-form').action = '/security-teams/' + id + '/delete';
+  new bootstrap.Modal(document.getElementById('delete-modal')).show();
+}
+
+var _activityIconMap = {
+  'invite_sent':      ['send','theme'],
+  'link_clicked':     ['box-arrow-in-right','info'],
+  'setup_complete':   ['shield-check','theme'],
+  'reply_posted':     ['chat-dots','primary'],
+  'field_edit_proposed': ['pencil-square','info'],
+  'report_edited':    ['pencil','secondary'],
+  'bounty_set':       ['currency-dollar','warning'],
+  'status_changed':   ['arrow-repeat','warning'],
+  'field_edit_accepted': ['check-circle','theme'],
+  'field_edit_rejected': ['x-circle','danger'],
+  'session_refreshed':['arrow-clockwise','secondary'],
+  'account_locked':   ['lock','danger'],
+  'account_unlocked': ['unlock','theme'],
+  'followup_30_sent': ['envelope','secondary'],
+  'followup_60_sent': ['envelope','secondary'],
+  'followup_90_sent': ['envelope','secondary'],
+  'followup_skipped': ['envelope-x','secondary'],
+};
+
+var _activityLabels = {
+  'invite_sent':      'Invite sent',
+  'link_clicked':     'Portal link accessed',
+  'setup_complete':   'Portal setup completed',
+  'reply_posted':     'Reply posted',
+  'field_edit_proposed': 'Field correction proposed',
+  'report_edited':    'Report updated by researcher',
+  'bounty_set':       'Bounty set',
+  'status_changed':   'Status changed',
+  'field_edit_accepted': 'Field correction accepted',
+  'field_edit_rejected': 'Field correction rejected',
+  'session_refreshed':'Session refreshed',
+  'account_locked':   'Account locked',
+  'account_unlocked': 'Account unlocked',
+  'followup_30_sent': '30-day follow-up sent',
+  'followup_60_sent': '60-day follow-up sent',
+  'followup_90_sent': '90-day follow-up sent',
+  'followup_skipped': 'Follow-up skipped (already replied)',
+};
+
+function _buildActivityLabel(entry) {
+  var base = _activityLabels[entry.action] || entry.action.replace(/_/g,' ');
+  var m = entry.metadata || {};
+  if (entry.action === 'status_changed' && m.new_status) {
+    return 'Status \u2192 ' + m.new_status.toUpperCase().replace('_',' ');
+  }
+  if (entry.action === 'bounty_set') {
+    if (m.event === 'payment_sent') return 'Payment sent (' + (m.method||'').replace('_',' ') + ')' + (m.tx_reference ? ' — ref: ' + m.tx_reference : '');
+    if (m.amount) return 'Bounty set: ' + m.amount + ' ' + (m.currency||'') + ' via ' + (m.method||'').replace('_',' ');
+  }
+  if (entry.action === 'reply_posted' && m.author) return 'Reply posted by ' + m.author;
+  if (entry.action === 'field_edit_proposed' && m.field_name) return 'Correction proposed: ' + m.field_name.replace(/_/g,' ');
+  if (entry.action === 'field_edit_accepted') { var f = m.field||m.field_name||''; return f ? 'Correction accepted: '+f.replace(/_/g,' ') : base; }
+  if (entry.action === 'field_edit_rejected') { var f = m.field||m.field_name||''; return f ? 'Correction rejected: '+f.replace(/_/g,' ') : base; }
+  if (entry.action === 'account_locked' && m.reason) return 'Account locked: ' + m.reason;
+  if (entry.action === 'setup_complete' && m.company_name) return 'Portal setup completed — ' + m.company_name;
+  return base;
+}
+
+function showActivityModal(id, label) {
+  document.getElementById('activity-modal-title').textContent = label || id;
+  var body = document.getElementById('activity-modal-body');
+  body.innerHTML = '<div class="text-center py-4 text-inverse text-opacity-50"><div class="spinner-border spinner-border-sm me-2"></div>Loading activity...</div>';
+  new bootstrap.Modal(document.getElementById('activity-modal')).show();
+
+  fetch('/security-teams/' + id + '/activity', {credentials: 'same-origin'})
+    .then(function(r) { return r.ok ? r.json() : Promise.reject(r.status); })
+    .then(function(entries) {
+      if (!entries || entries.length === 0) {
+        body.innerHTML = '<p class="text-inverse text-opacity-50 small mb-0 text-center py-3">No activity recorded for this invite.</p>';
+        return;
+      }
+      var html = '<div class="position-relative" style="padding-left:1.75rem;">';
+      html += '<div class="position-absolute top-0 bottom-0" style="left:0.5rem;width:2px;background:rgba(255,255,255,0.06);"></div>';
+      entries.forEach(function(entry) {
+        var info = _activityIconMap[entry.action] || ['circle','secondary'];
+        var iconColor = (info[1]==='warning'||info[1]==='theme') ? '#000' : '#fff';
+        var label = _buildActivityLabel(entry);
+        var ts = entry.performed_at ? new Date(entry.performed_at).toLocaleString([], {year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+        var ipInfo = entry.ip_address ? '<span class="text-inverse text-opacity-35 ms-2" style="font-size:0.6rem;">'+entry.ip_address+'</span>' : '';
+
+        // Extra metadata detail
+        var detail = '';
+        var m = entry.metadata || {};
+        if (entry.action === 'status_changed' && m.explanation) {
+          detail = '<div class="mt-1 p-2 rounded bg-inverse bg-opacity-5 small text-inverse text-opacity-75" style="font-size:0.7rem;">' + m.explanation.replace(/</g,'&lt;') + '</div>';
+        }
+
+        html += '<div class="d-flex gap-2 mb-3 position-relative">';
+        html += '<div class="position-absolute" style="left:-1.75rem;top:0.1rem;">';
+        html += '<div class="rounded-circle d-flex align-items-center justify-content-center bg-'+info[1]+'" style="width:20px;height:20px;">';
+        html += '<i class="bi bi-'+info[0]+'" style="font-size:0.55rem;color:'+iconColor+';"></i></div></div>';
+        html += '<div class="flex-1 min-width-0">';
+        html += '<div class="small fw-bold text-inverse">' + label + ipInfo + '</div>';
+        html += '<div class="text-inverse text-opacity-50" style="font-size:0.65rem;">' + ts + '</div>';
+        html += detail;
+        html += '</div></div>';
+      });
+      html += '</div>';
+      body.innerHTML = html;
+    })
+    .catch(function(err) {
+      body.innerHTML = '<div class="alert alert-danger small py-2">Failed to load activity log.</div>';
+    });
+}
+</script>
+{% endblock %}

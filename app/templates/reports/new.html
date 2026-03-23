@@ -1,0 +1,489 @@
+{% extends "base.html" %}
+{% set is_edit = is_edit if is_edit is defined else false %}
+{% set edit_report_uuid = edit_report_uuid if edit_report_uuid is defined else '' %}
+{% block title %}{{ 'Edit Report' if is_edit else 'New Report' }} — {{ platform_name }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css"
+      integrity="sha512-rO+olRTkcf304NScNlDu/PN6SzMkVHa8LmrWfUNDnC2w5k/ylEv7nR02/A32Yv+a7sB6/JVvuPLb+bTTv7LA=="
+      crossorigin="anonymous">
+{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4">
+  <div>
+    <h1 class="page-header-title fw-bold mb-0">{{ 'EDIT VULNERABILITY REPORT' if is_edit else 'NEW VULNERABILITY REPORT' }}</h1>
+  </div>
+  <div class="ms-auto">
+    <a href="{{ url_for('reports.list_reports') }}" class="btn btn-light">
+      <i class="bi bi-arrow-left me-1"></i>Back
+    </a>
+  </div>
+</div>
+
+{% if duplicate_warnings %}
+<div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  <strong>Possible Duplicate Detected</strong>
+  {% for w in duplicate_warnings %}
+  <div class="mt-1">Similar report: <a href="{{ url_for('reports.view_report', report_uuid=w.id) }}" class="alert-link">{{ w.display_id }} — {{ w.title|truncate(60) }}</a></div>
+  {% endfor %}
+  <div class="mt-1"><small>Review before submitting. You can dismiss this and continue.</small></div>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<form method="POST" action="{{ url_for('reports.edit_report', report_uuid=edit_report_uuid) if is_edit else url_for('reports.new_report') }}" enctype="multipart/form-data" id="report-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="text" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;top:-9999px;">
+
+  <!-- Section 1: Identification -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">1</span>Identification
+    </div>
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label fw-bold">Report Title <span class="text-danger">*</span></label>
+        <input type="text" name="title" class="form-control" maxlength="500" required
+               value="{{ (prefill or {}).get('title', '') }}" placeholder="e.g. Reflected XSS in search parameter">
+      </div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label class="form-label fw-bold">Program / Target Name</label>
+          <div class="position-relative" id="program-wrapper">
+            <input type="text" name="program_name" id="program-input" class="form-control"
+                   maxlength="300" value="{{ (prefill or {}).get('program_name', '') }}"
+                   placeholder="e.g. Acme Corp — Bug Bounty" autocomplete="off">
+            <div id="program-dropdown" class="dropdown-menu w-100" style="display:none;"></div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold">Target URL / Asset</label>
+          <input type="text" name="target_asset" class="form-control" maxlength="500"
+                 value="{{ (prefill or {}).get('target_asset', '') }}" placeholder="https://app.example.com">
+        </div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-bold">Template</label>
+        <select name="template_id" id="template-select" class="form-select" onchange="loadTemplate(this.value)">
+          <option value="">— No template —</option>
+          {% for t in templates %}
+          <option value="{{ t.id }}">{{ t.category|capitalize }} — {{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 2: Classification -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">2</span>Classification
+    </div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label class="form-label fw-bold">CWE Weakness</label>
+          <div class="input-group">
+            <input type="number" name="cwe_id" id="cwe-id" class="form-control" style="max-width:120px;"
+                   min="1" max="9999" value="{{ (prefill or {}).get('cwe_id', '') }}" placeholder="ID">
+            <input type="text" name="cwe_name" id="cwe-name" class="form-control"
+                   maxlength="300" value="{{ (prefill or {}).get('cwe_name', '') }}" placeholder="e.g. CWE-79: XSS">
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold">Severity</label>
+          <div class="d-flex flex-wrap gap-2">
+            {% for sev in ['critical','high','medium','low','informational'] %}
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="severity" value="{{ sev }}" id="sev-{{ sev }}"
+                     {{ 'checked' if (prefill or {}).get('severity') == sev }}>
+              <label class="form-check-label" for="sev-{{ sev }}">
+                {% if sev == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+                {% elif sev == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+                {% elif sev == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+                {% elif sev == 'low' %}<span class="badge bg-info">LOW</span>
+                {% else %}<span class="badge bg-secondary">INFO</span>{% endif %}
+              </label>
+            </div>
+            {% endfor %}
+          </div>
+          <div id="cvss-severity-warning" class="alert alert-warning small py-1 px-2 mt-2" style="display:none;">
+            <i class="bi bi-exclamation-triangle me-1"></i>CVSS suggests a different severity — confirm?
+          </div>
+        </div>
+      </div>
+      <div class="mb-0">
+        <label class="form-label fw-bold">Tags</label>
+        <div class="d-flex flex-wrap gap-2" id="tags-container">
+          {% set all_tags = ['SQLi','XSS','IDOR','SSRF','CSRF','RCE','Auth Bypass','BAC','Logic Flaw',
+                             'Race Condition','XXE','Deserialization','SSTI','Open Redirect',
+                             'Prototype Pollution','Web3','Mobile','API'] %}
+          {% set selected_tags = (prefill or {}).get('tags_list', []) %}
+          {% for tag in all_tags %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" name="tags[]" value="{{ tag }}"
+                   id="tag-{{ loop.index }}" {{ 'checked' if tag in selected_tags }}>
+            <label class="form-check-label small" for="tag-{{ loop.index }}">{{ tag }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 3: CVSS Calculator -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold d-flex align-items-center">
+      <span class="badge bg-theme me-2">3</span>CVSS 4.0 Calculator
+      <span class="ms-3" id="cvss-score-badge"></span>
+    </div>
+    <div class="card-body">
+      <input type="hidden" name="cvss_score" id="cvss-score-hidden">
+      <input type="hidden" name="cvss_vector" id="cvss-vector-hidden" value="{{ (prefill or {}).get('cvss_vector', '') }}">
+      <div id="cvss-calculator">
+        <div class="mb-3">
+          <h6 class="fw-bold text-inverse text-opacity-75 mb-2">Base Metrics</h6>
+          <div class="row g-2">
+            {% set base_metrics = [
+              ('AV','Attack Vector',[('N','Network'),('A','Adjacent'),('L','Local'),('P','Physical')]),
+              ('AC','Attack Complexity',[('L','Low'),('H','High')]),
+              ('AT','Attack Requirements',[('N','None'),('P','Present')]),
+              ('PR','Privileges Required',[('N','None'),('L','Low'),('H','High')]),
+              ('UI','User Interaction',[('N','None'),('P','Passive'),('A','Active')]),
+              ('VC','Vuln Confidentiality',[('H','High'),('L','Low'),('N','None')]),
+              ('VI','Vuln Integrity',[('H','High'),('L','Low'),('N','None')]),
+              ('VA','Vuln Availability',[('H','High'),('L','Low'),('N','None')]),
+              ('SC','Subseq. Confidentiality',[('H','High'),('L','Low'),('N','None')]),
+              ('SI','Subseq. Integrity',[('H','High'),('L','Low'),('N','None')]),
+              ('SA','Subseq. Availability',[('H','High'),('L','Low'),('N','None')]),
+            ] %}
+            {% for key, label, opts in base_metrics %}
+            <div class="col-md-6 col-lg-4">
+              <div class="d-flex align-items-center gap-2">
+                <label class="form-label fw-bold small mb-0 text-nowrap" style="min-width:140px;">{{ label }}</label>
+                <div class="btn-group btn-group-sm flex-wrap gap-1">
+                  {% for val, text in opts %}
+                  <button type="button" class="btn btn-outline-theme cvss-btn" data-metric="{{ key }}" data-val="{{ val }}" title="{{ text }}">{{ val }}</button>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="mb-3">
+          <h6 class="fw-bold text-inverse text-opacity-75 mb-2">Threat Metrics</h6>
+          <div class="d-flex align-items-center gap-2">
+            <label class="form-label fw-bold small mb-0" style="min-width:140px;">Exploit Maturity</label>
+            <div class="btn-group btn-group-sm">
+              {% for val, text in [('X','Not Defined'),('A','Attacked'),('P','POC'),('U','Unreported')] %}
+              <button type="button" class="btn btn-outline-theme cvss-btn" data-metric="E" data-val="{{ val }}" title="{{ text }}">{{ val }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 bg-inverse bg-opacity-5 rounded p-2">
+          <code id="cvss-vector-display" class="text-theme small flex-1">CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:N/SC:N/SI:N/SA:N</code>
+          <button type="button" onclick="copyVector()" class="btn btn-outline-theme btn-sm">
+            <i class="bi bi-clipboard me-1"></i>Copy
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 4: Report Body -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">4</span>Report Body
+    </div>
+    <div class="card-body">
+      {% set md_fields = [
+        ('description','Description','required','Describe the vulnerability...'),
+        ('steps_to_reproduce','Steps to Reproduce','','1. Navigate to...\n2. Enter...'),
+        ('proof_of_concept','Proof of Concept (PoC)','','```\npayload here\n```'),
+        ('impact_statement','Impact Statement','','This vulnerability allows an attacker to...'),
+        ('remediation','Fix / Remediation','','To remediate this issue...'),
+        ('technical_details','Additional Technical Details','',''),
+      ] %}
+      {% for fname, flabel, frequired, fplaceholder in md_fields %}
+      <div class="mb-4 markdown-field">
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <label class="form-label fw-bold mb-0">{{ flabel }}{% if frequired %} <span class="text-danger">*</span>{% endif %}</label>
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-theme" data-action="bold" data-target="{{ fname }}" title="Bold">B</button>
+            <button type="button" class="btn btn-outline-theme" data-action="code" data-target="{{ fname }}" title="Code">`c`</button>
+            <button type="button" class="btn btn-outline-theme" data-action="codeblock" data-target="{{ fname }}" title="Code Block">```</button>
+            <button type="button" class="btn btn-outline-theme md-preview-toggle" data-target="{{ fname }}-preview" title="Preview">Preview</button>
+          </div>
+        </div>
+        <textarea name="{{ fname }}" id="{{ fname }}" class="form-control font-monospace"
+                  rows="6" placeholder="{{ fplaceholder }}"
+                  {{ 'required' if frequired == 'required' }}>{{ (prefill or {}).get(fname, '') }}</textarea>
+        <div id="{{ fname }}-preview" class="card bg-inverse bg-opacity-5 border-0 p-3 mt-1 markdown-content" style="display:none;"></div>
+      </div>
+      {% endfor %}
+
+      <div class="mb-0">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <label class="form-label fw-bold mb-0">
+            <i class="bi bi-lock me-1 text-warning"></i>Internal Notes
+          </label>
+          <span class="text-inverse text-opacity-50 small">(owner-only, never sent to security team)</span>
+        </div>
+        <textarea name="internal_notes" class="form-control font-monospace bg-warning bg-opacity-5" rows="4"
+                  placeholder="Private notes visible only to you...">{{ (prefill or {}).get('internal_notes', '') }}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 5: AI Assistance -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">5</span>AI Assistance
+    </div>
+    <div class="card-body">
+      {% if ai_providers %}
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <label class="form-label fw-bold small">AI Provider</label>
+          <select id="ai-provider-select" class="form-select">
+            {% for p in ai_providers %}
+            <option value="{{ p }}">{{ p|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-8">
+          <label class="form-label fw-bold small">Generation Mode</label>
+          <select id="ai-mode-select" class="form-select">
+            <option value="full_report">Full Report Draft</option>
+            <option value="improve_report">Improve Existing</option>
+            <option value="suggest_remediation">Generate Remediation</option>
+            <option value="explain_cvss">Explain CVSS</option>
+            <option value="suggest_cwe">Suggest CWE</option>
+          </select>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label fw-bold small">Context / Notes for AI</label>
+        <textarea id="ai-context" class="form-control" rows="3"
+                  placeholder="Brief notes: vulnerability type, target, what you found..."></textarea>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <button type="button" id="ai-generate-btn" class="btn btn-theme" onclick="triggerAIGeneration()">
+          <i class="bi bi-lightning me-1"></i>Generate with AI
+        </button>
+        <div id="ai-status" class="d-flex align-items-center gap-2 text-inverse text-opacity-50" style="display:none!important;">
+          <div class="spinner-border spinner-border-sm text-theme"></div>
+          <span id="ai-status-text">Generating...</span>
+        </div>
+      </div>
+      <div id="ai-result-notice" class="alert alert-theme mt-3" style="display:none;">
+        <i class="bi bi-check-circle me-2"></i>AI Draft Generated — Review and edit before submitting.
+      </div>
+      {% else %}
+      <p class="text-inverse text-opacity-50 mb-0">No AI providers configured. Set an API key in <code>.env</code>.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Section 6: Attachments -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">6</span>Attachments
+    </div>
+    <div class="card-body">
+      <div id="drop-zone" class="border border-theme border-opacity-50 rounded p-4 text-center mb-3"
+           style="border-style:dashed!important; cursor:pointer; transition:border-color 0.2s;">
+        <i class="bi bi-paperclip text-theme mb-2" style="font-size:2rem; display:block;"></i>
+        <p class="mb-1 fw-bold">Drag and drop files here</p>
+        <p class="text-inverse text-opacity-50 small mb-2">or <label for="file-input" class="text-theme" style="cursor:pointer;">browse files</label></p>
+        <p class="text-inverse text-opacity-50 small mb-0">PNG, JPG, GIF, MP4, MOV, WEBM, PDF, TXT, LOG — max 50MB total</p>
+        <input type="file" name="attachments" id="file-input" multiple
+               accept=".png,.jpg,.jpeg,.gif,.mp4,.mov,.webm,.pdf,.txt,.log" style="display:none">
+      </div>
+      <div id="file-preview-grid" class="row g-2"></div>
+    </div>
+  </div>
+
+  <!-- Section 7: Recipients -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">7</span>Notification Recipients
+    </div>
+    <div class="card-body">
+      <div id="recipients-container" class="mb-3">
+        <div class="recipient-row d-flex gap-2 mb-2" data-index="0">
+          <input type="email" name="recipient_emails[]" class="form-control" placeholder="security@company.com">
+          <input type="text" name="recipient_labels[]" class="form-control" placeholder="Label (optional, e.g. PSIRT)">
+          <button type="button" onclick="removeRecipient(this)" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-x"></i>
+          </button>
+        </div>
+      </div>
+      <button type="button" onclick="addRecipient()" class="btn btn-outline-theme btn-sm mb-3">
+        <i class="bi bi-plus me-1"></i>Add Recipient
+      </button>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-bold small">Send via</label>
+          <div class="d-flex flex-wrap gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="notify_email" id="notify-email" checked>
+              <label class="form-check-label" for="notify-email"><i class="bi bi-envelope me-1"></i>Email</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="notify_discord" id="notify-discord" checked>
+              <label class="form-check-label" for="notify-discord"><i class="bi bi-discord me-1"></i>Discord</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="notify_telegram" id="notify-telegram" checked>
+              <label class="form-check-label" for="notify-telegram"><i class="bi bi-telegram me-1"></i>Telegram</label>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label fw-bold small">Auto Follow-Up</label>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="followup_30" value="30" id="fu30" checked>
+              <label class="form-check-label" for="fu30">Day 30</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="followup_60" value="60" id="fu60" checked>
+              <label class="form-check-label" for="fu60">Day 60</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="followup_90" value="90" id="fu90" checked>
+              <label class="form-check-label" for="fu90">Day 90</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 8: Bounty -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-header fw-bold">
+      <span class="badge bg-theme me-2">8</span>Bounty Tracking
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label fw-bold small">Amount</label>
+          <input type="number" name="bounty_amount" class="form-control" step="0.00000001"
+                 min="0" value="{{ (prefill or {}).get('bounty_amount', '') }}" placeholder="0.00">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold small">Currency</label>
+          <select name="bounty_currency" class="form-select">
+            {% for c in ['USD','EUR','PHP','GBP','BTC','ETH','USDT','DOGE','XMR'] %}
+            <option value="{{ c }}" {{ 'selected' if (prefill or {}).get('bounty_currency') == c }}>{{ c }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit -->
+  <div class="card mb-3">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+      <a href="{{ url_for('reports.list_reports') }}" class="btn btn-light">Cancel</a>
+      <div class="ms-auto d-flex gap-2">
+        <button type="submit" name="action" value="draft" class="btn btn-outline-theme">
+          <i class="bi bi-save me-1"></i>Save as Draft
+        </button>
+        <button type="submit" name="action" value="submit" class="btn btn-theme">
+          <i class="bi bi-send me-1"></i>Submit Report
+        </button>
+      </div>
+    </div>
+  </div>
+
+</form>
+
+<script src="{{ url_for('static', filename='js/cvss4_calculator.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/markdown_preview.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/file_upload.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/ai_generator.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/program_autocomplete.js') }}" defer></script>
+<script>
+function addRecipient() {
+  var c = document.getElementById('recipients-container');
+  var idx = c.children.length;
+  var div = document.createElement('div');
+  div.className = 'recipient-row d-flex gap-2 mb-2';
+  div.dataset.index = idx;
+  div.innerHTML = '<input type="email" name="recipient_emails[]" class="form-control" placeholder="security@company.com">'
+    + '<input type="text" name="recipient_labels[]" class="form-control" placeholder="Label (optional)">'
+    + '<button type="button" onclick="removeRecipient(this)" class="btn btn-outline-danger btn-sm"><i class="bi bi-x"></i></button>';
+  c.appendChild(div);
+}
+function removeRecipient(btn) {
+  var row = btn.closest('.recipient-row');
+  if (document.querySelectorAll('.recipient-row').length > 1) row.remove();
+}
+function loadTemplate(id) {
+  if (!id) return;
+  fetch('/api/templates/' + id)
+    .then(r => r.json())
+    .then(t => {
+      if (t.title_template) document.querySelector('[name=title]').value = t.title_template;
+      if (t.description_template) document.getElementById('description').value = t.description_template;
+      if (t.steps_template) document.getElementById('steps_to_reproduce').value = t.steps_template;
+      if (t.poc_template) document.getElementById('proof_of_concept').value = t.poc_template;
+      if (t.remediation_template) document.getElementById('remediation').value = t.remediation_template;
+      if (t.cwe_id) document.getElementById('cwe-id').value = t.cwe_id;
+      if (t.cwe_name) document.getElementById('cwe-name').value = t.cwe_name;
+      if (t.severity) document.getElementById('sev-' + t.severity).checked = true;
+    });
+}
+function copyVector() {
+  var v = document.getElementById('cvss-vector-display').textContent;
+  navigator.clipboard.writeText(v).then(function() {
+    var btn = event.target.closest('button');
+    btn.innerHTML = '<i class="bi bi-check me-1"></i>Copied!';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard me-1"></i>Copy'; }, 2000);
+  });
+}
+</script>
+{% endblock %}
