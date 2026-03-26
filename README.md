@@ -2,8 +2,9 @@
 **Project-Apocalypse** — Self-Hosted External Bug Bounty Reporting Platform
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Project: Project-Apocalypse](https://img.shields.io/badge/project-Project--Apocalypse-red)]()
-[![Security: Spade](https://img.shields.io/badge/security-Spade-green)]()
+[![GitHub](https://img.shields.io/badge/GitHub-0xspade%2Fghostportal-181717?logo=github)](https://github.com/0xspade/ghostportal)
+[![Project: Project-Apocalypse](https://img.shields.io/badge/project-Project--Apocalypse-red)](https://github.com/0xspade/ghostportal)
+[![Security: Spade](https://img.shields.io/badge/security-Spade-green)](https://github.com/0xspade)
 
 > A self-hosted, fully passwordless, UUID-native vulnerability disclosure platform for independent security researchers. Submit reports, invite security teams, track bounties, and maintain a full audit trail — all under your control.
 

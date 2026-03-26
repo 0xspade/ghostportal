@@ -44,7 +44,7 @@ credited in release notes unless anonymity is requested.
 
 ```bash
 # Clone and set up
-git clone <repo-url>
+git clone https://github.com/0xspade/ghostportal
 cd project-apocalypse
 cp .env.example .env
 # Edit .env with your configuration
