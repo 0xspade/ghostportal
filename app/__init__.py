@@ -261,7 +261,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def preview_markdown():
         from flask import session as _session
         from app.utils.markdown_renderer import render_markdown
-        if _session.get("role") not in ("owner", "security_team"):
+        if _session.get("role") != "owner" and _session.get("portal_role") != "security_team":
             return jsonify({"error": "Unauthorized"}), 401
         body = request.get_json(silent=True) or {}
         text = (body.get("text") or "")[:50000]
@@ -274,7 +274,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         from flask import session as _session
         from app.utils.external_links import get_or_create_external_link
         from app.extensions import db as _db
-        if _session.get("role") not in ("owner", "security_team"):
+        if _session.get("role") != "owner" and _session.get("portal_role") != "security_team":
             return jsonify({"error": "Unauthorized"}), 401
         body = request.get_json(silent=True) or {}
         url = (body.get("url") or "").strip()
@@ -496,14 +496,9 @@ def _load_config(app: Flask) -> None:
         RATELIMIT_DEFAULT=env("RATELIMIT_DEFAULT", "100 per hour"),
         RATELIMIT_STORAGE_URL=env("REDIS_URL", "redis://localhost:6379/0"),
 
-        # AI
-        AI_DEFAULT_PROVIDER=env("AI_DEFAULT_PROVIDER", "anthropic"),
-        ANTHROPIC_API_KEY=env("ANTHROPIC_API_KEY", ""),
-        ANTHROPIC_MODEL=env("ANTHROPIC_MODEL", "claude-opus-4-5"),
-        OPENAI_API_KEY=env("OPENAI_API_KEY", ""),
-        OPENAI_MODEL=env("OPENAI_MODEL", "gpt-4o"),
-        GEMINI_API_KEY=env("GEMINI_API_KEY", ""),
-        GEMINI_MODEL=env("GEMINI_MODEL", "gemini-1.5-pro"),
+        # AI — Ollama only (self-hosted); disabled by default
+        AI_ENABLED=env("AI_ENABLED", "false").lower() in ("true", "1", "yes"),
+        AI_DEFAULT_PROVIDER="ollama",
         OLLAMA_BASE_URL=env("OLLAMA_BASE_URL", "http://localhost:11434"),
         OLLAMA_MODEL=env("OLLAMA_MODEL", "llama3.1"),
 
@@ -590,6 +585,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.blueprints.security_teams import security_teams_bp
     from app.blueprints.bounty import bounty_bp
     from app.blueprints.programs import programs_bp
+    from app.blueprints.program_list import program_list_bp
     from app.blueprints.webhooks import webhooks_bp
     from app.blueprints.ai_bp import ai_bp
     from app.blueprints.legal import legal_bp
@@ -604,6 +600,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(security_teams_bp)
     app.register_blueprint(bounty_bp)
     app.register_blueprint(programs_bp)
+    app.register_blueprint(program_list_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(legal_bp)

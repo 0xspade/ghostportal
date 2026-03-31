@@ -283,7 +283,8 @@ def verify_magic_link(raw_url_token: str):
     subject = owner or member
 
     # Validate token: exists, not used, not expired
-    if not subject or (subject.token_expiry and _ensure_utc(subject.token_expiry) < utcnow()):
+    # Note: if token_expiry is None (unset), treat as expired — never allow expiry-less tokens
+    if not subject or not subject.token_expiry or _ensure_utc(subject.token_expiry) < utcnow():
         log_access_event(None, event_type="login_failed",
                          metadata={"reason": "invalid_or_expired_url_token"})
         flash(MSG_INVALID_LINK, "error")
@@ -313,7 +314,16 @@ def verify_magic_link(raw_url_token: str):
     try:
         attempts = int(redis_client.get(attempt_key) or 0)
     except Exception:
-        attempts = 0
+        # Redis unavailable — fail secure: treat as exhausted rather than allowing
+        # unlimited brute-force. The user can request a new magic link immediately.
+        current_app.logger.error(
+            "verify_magic_link: Redis unavailable for OTP attempt counter — "
+            "rejecting submission to fail secure (session_id context: %s)",
+            url_token_hash[:8],
+        )
+        flash(MSG_INVALID_LINK, "error")
+        constant_time_response(start)
+        return redirect(url_for("auth.login"))
 
     # Exhausted attempts — invalidate token and force re-login
     if attempts >= MAX_ATTEMPTS:
@@ -482,6 +492,13 @@ def ping():
     Session keepalive endpoint — called by idle_timer.js on user activity.
     Updates last_active for whichever role(s) are active in this browser session.
     """
+    # CSRF validation — prevent cross-site session keepalive abuse
+    from app.extensions import csrf as _csrf
+    try:
+        _csrf.protect()
+    except Exception:
+        return jsonify({"ok": False, "error": "csrf_invalid"}), 403
+
     owner_role = session.get("role")
     portal_role = session.get("portal_role")
     if not owner_role and not portal_role:

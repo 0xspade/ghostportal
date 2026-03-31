@@ -146,10 +146,13 @@ def portal_setup(raw_invite_token):
         from app.extensions import redis_client
         attempts = int(redis_client.get(attempt_key) or 0)
     except Exception as exc:
-        current_app.logger.warning(
-            "portal_setup: Redis unavailable for OTP attempt counter: %s — defaulting to 0", exc
+        # Redis unavailable — fail secure: reject rather than allow unlimited brute-force.
+        current_app.logger.error(
+            "portal_setup: Redis unavailable for OTP attempt counter: %s — "
+            "rejecting submission to fail secure", exc
         )
-        attempts = 0
+        flash(MSG_INVALID_LINK, "error")
+        return redirect(url_for("auth.login"))
 
     if attempts >= MAX_OTP_ATTEMPTS:
         # Invalidate the invite token to force fresh invite
@@ -789,11 +792,11 @@ def compose(invite_uuid):
                         db.session.add(bp_bonus)
                         db.session.add(InviteActivity(
                             invite_id=invite.id,
-                            action="bounty_set",
+                            action="bonus_set",
                             ip_address=request.remote_addr,
                             user_agent=request.user_agent.string,
                             metadata_={"amount": str(bonus_amount), "currency": bonus_currency,
-                                       "method": bonus_method, "bonus": True},
+                                       "method": bonus_method},
                         ))
                         try:
                             from app.tasks.notifications import notify_owner
