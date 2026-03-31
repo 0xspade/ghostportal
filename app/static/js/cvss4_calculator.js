@@ -85,20 +85,8 @@
     var hiddenVector = document.getElementById('cvss-vector-hidden');
     if (hiddenVector) hiddenVector.value = vector;
 
-    // Warn if severity inconsistent with CVSS
-    checkSeverityConsistency(sev);
-  }
-
-  function checkSeverityConsistency(cvss_sev) {
-    var selectedSev = document.querySelector('input[name=severity]:checked');
-    var warning = document.getElementById('cvss-severity-warning');
-    if (!warning || !selectedSev) return;
-    if (selectedSev.value !== cvss_sev && cvss_sev !== 'none') {
-      warning.textContent = '⚠ CVSS 4.0 suggests ' + cvss_sev.toUpperCase() + ' — you selected ' + selectedSev.value.toUpperCase() + '. Confirm?';
-      warning.style.display = 'inline-block';
-    } else {
-      warning.style.display = 'none';
-    }
+    // Notify severity mode controller (if present)
+    if (typeof window.onCvssUpdate === 'function') window.onCvssUpdate(score, sev);
   }
 
   function parseVector(vectorStr) {
@@ -135,14 +123,6 @@
     Object.keys(metrics).forEach(function (k) {
       var btn = document.querySelector('.cvss-btn[data-metric="' + k + '"][data-val="' + metrics[k] + '"]');
       if (btn) btn.classList.add('active');
-    });
-
-    // Watch severity radio changes
-    document.querySelectorAll('input[name=severity]').forEach(function (r) {
-      r.addEventListener('change', function () {
-        var score = computeScore();
-        checkSeverityConsistency(getSeverity(score));
-      });
     });
 
     updateDisplay();

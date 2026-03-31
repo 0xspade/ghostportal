@@ -102,25 +102,45 @@
                    maxlength="300" value="{{ (prefill or {}).get('cwe_name', '') }}" placeholder="e.g. CWE-79: XSS">
           </div>
         </div>
+        {% set _has_cvss = (prefill or {}).get('cvss_vector', '') != '' %}
         <div class="col-md-4">
           <label class="form-label fw-bold">Severity</label>
-          <div class="d-flex flex-wrap gap-2">
-            {% for sev in ['critical','high','medium','low','informational'] %}
-            <div class="form-check form-check-inline">
-              <input class="form-check-input" type="radio" name="severity" value="{{ sev }}" id="sev-{{ sev }}"
-                     {{ 'checked' if (prefill or {}).get('severity') == sev }}>
-              <label class="form-check-label" for="sev-{{ sev }}">
-                {% if sev == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
-                {% elif sev == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
-                {% elif sev == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
-                {% elif sev == 'low' %}<span class="badge bg-info">LOW</span>
-                {% else %}<span class="badge bg-secondary">INFO</span>{% endif %}
-              </label>
-            </div>
-            {% endfor %}
+
+          <!-- Mode selector -->
+          <div class="mb-2">
+            <select id="severity-mode" class="form-select form-select-sm" style="max-width:170px;">
+              <option value="manual" {{ 'selected' if not _has_cvss }}>Manual</option>
+              <option value="cvss" {{ 'selected' if _has_cvss }}>CVSS 4.0</option>
+            </select>
           </div>
-          <div id="cvss-severity-warning" class="alert alert-warning small py-1 px-2 mt-2" style="display:none;">
-            <i class="bi bi-exclamation-triangle me-1"></i>CVSS suggests a different severity — confirm?
+
+          <!-- Single hidden field submitted to backend -->
+          <input type="hidden" name="severity" id="severity-hidden"
+                 value="{{ (prefill or {}).get('severity', '') }}">
+
+          <!-- Manual: radio buttons -->
+          <div id="severity-manual" {{ 'style="display:none;"' if _has_cvss else '' }}>
+            <div class="d-flex flex-wrap gap-2">
+              {% for sev in ['critical','high','medium','low','informational'] %}
+              <div class="form-check form-check-inline">
+                <input class="form-check-input sev-radio" type="radio" value="{{ sev }}" id="sev-{{ sev }}"
+                       {{ 'checked' if (prefill or {}).get('severity') == sev }}>
+                <label class="form-check-label" for="sev-{{ sev }}">
+                  {% if sev == 'critical' %}<span class="badge bg-danger">CRITICAL</span>
+                  {% elif sev == 'high' %}<span class="badge bg-warning text-dark">HIGH</span>
+                  {% elif sev == 'medium' %}<span class="badge bg-primary">MEDIUM</span>
+                  {% elif sev == 'low' %}<span class="badge bg-info">LOW</span>
+                  {% else %}<span class="badge bg-secondary">INFO</span>{% endif %}
+                </label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- CVSS mode: show derived severity badge -->
+          <div id="severity-cvss-derived" {{ '' if _has_cvss else 'style="display:none;"' }}>
+            <span id="severity-cvss-badge" class="badge bg-secondary fs-6">—</span>
+            <small class="text-muted ms-2">from CVSS score</small>
           </div>
         </div>
       </div>
@@ -143,8 +163,9 @@
     </div>
   </div>
 
-  <!-- Section 3: CVSS Calculator -->
-  <div class="card mb-3">
+  <!-- Section 3: CVSS Calculator (shown only in CVSS severity mode) -->
+  {% set _has_cvss = (prefill or {}).get('cvss_vector', '') != '' %}
+  <div class="card mb-3" id="cvss-section-card" {{ '' if _has_cvss else 'style="display:none;"' }}>
     <div class="card-arrow">
       <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
       <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
@@ -531,6 +552,58 @@ function removeRecipient(btn) {
   var row = btn.closest('.recipient-row');
   if (document.querySelectorAll('.recipient-row').length > 1) row.remove();
 }
+// ── Severity mode toggle ──────────────────────────────────────────────────────
+(function() {
+  var modeSelect    = document.getElementById('severity-mode');
+  var manualSection = document.getElementById('severity-manual');
+  var cvssSection   = document.getElementById('severity-cvss-derived');
+  var cvssCard      = document.getElementById('cvss-section-card');
+  var hiddenSev     = document.getElementById('severity-hidden');
+
+  var SEV_COLORS = {
+    critical: 'bg-danger', high: 'bg-warning text-dark',
+    medium: 'bg-primary', low: 'bg-info', informational: 'bg-secondary', none: 'bg-secondary'
+  };
+  var SEV_LABELS = {
+    critical: 'CRITICAL', high: 'HIGH', medium: 'MEDIUM',
+    low: 'LOW', informational: 'INFO', none: '—'
+  };
+
+  function applyMode(mode) {
+    var isCvss = mode === 'cvss';
+    manualSection.style.display = isCvss ? 'none' : '';
+    cvssSection.style.display   = isCvss ? ''     : 'none';
+    cvssCard.style.display      = isCvss ? ''     : 'none';
+    if (!isCvss) {
+      // sync hidden field from whichever radio is checked
+      var checked = document.querySelector('.sev-radio:checked');
+      hiddenSev.value = checked ? checked.value : '';
+    }
+  }
+
+  // Manual radio clicks update the hidden field
+  document.querySelectorAll('.sev-radio').forEach(function(r) {
+    r.addEventListener('change', function() {
+      if (modeSelect.value === 'manual') hiddenSev.value = this.value;
+    });
+  });
+
+  // Mode selector change
+  modeSelect.addEventListener('change', function() { applyMode(this.value); });
+
+  // CVSS calculator calls this when score updates
+  window.onCvssUpdate = function(score, sev) {
+    if (modeSelect.value !== 'cvss') return;
+    var badge = document.getElementById('severity-cvss-badge');
+    var cls = SEV_COLORS[sev] || 'bg-secondary';
+    badge.className = 'badge fs-6 ' + cls;
+    badge.textContent = SEV_LABELS[sev] || '—';
+    hiddenSev.value = (sev && sev !== 'none') ? sev : '';
+  };
+
+  applyMode(modeSelect.value);
+})();
+
 function loadTemplate(id) {
   if (!id) return;
   fetch('/api/templates/' + id)
@@ -543,7 +616,12 @@ function loadTemplate(id) {
       if (t.remediation_template) document.getElementById('remediation').value = t.remediation_template;
       if (t.cwe_id) document.getElementById('cwe-id').value = t.cwe_id;
       if (t.cwe_name) document.getElementById('cwe-name').value = t.cwe_name;
-      if (t.severity) document.getElementById('sev-' + t.severity).checked = true;
+      if (t.severity) {
+        document.getElementById('severity-mode').value = 'manual';
+        document.getElementById('severity-mode').dispatchEvent(new Event('change'));
+        var r = document.getElementById('sev-' + t.severity);
+        if (r) { r.checked = true; r.dispatchEvent(new Event('change')); }
+      }
     });
 }
 function copyVector() {
