@@ -294,39 +294,36 @@
   </div>
   <div class="card-body">
 
-    {% set providers = {'anthropic': config.ANTHROPIC_API_KEY, 'openai': config.OPENAI_API_KEY, 'gemini': config.GEMINI_API_KEY, 'ollama': config.OLLAMA_BASE_URL} %}
     <div class="row g-3 mb-4">
-      {% for name, key in providers.items() %}
-      <div class="col-md-3">
-        <label class="form-label fw-bold small">{{ name|capitalize }}</label>
+      <div class="col-md-4">
+        <label class="form-label fw-bold small">Ollama (Self-Hosted)</label>
         <div class="d-flex align-items-center gap-2">
-          {% if key %}
+          {% if config.OLLAMA_BASE_URL %}
           <span class="badge bg-theme">Configured</span>
+          <small class="text-muted">{{ config.OLLAMA_BASE_URL }}</small>
           {% else %}
           <span class="badge bg-secondary">Not configured</span>
+          <small class="text-muted">Set OLLAMA_BASE_URL in .env</small>
           {% endif %}
         </div>
+        {% if config.OLLAMA_MODEL %}
+        <small class="text-muted d-block mt-1">Model: {{ config.OLLAMA_MODEL }}</small>
+        {% endif %}
       </div>
-      {% endfor %}
     </div>
 
-    <label class="form-label fw-bold small">Test AI Generation</label>
+    <label class="form-label fw-bold small">Test AI Generation (Ollama)</label>
     <div class="d-flex align-items-center gap-2 mb-2">
-      <select id="test-ai-provider" class="form-select" style="max-width:200px;">
-        {% for name, key in providers.items() %}
-        {% if key %}<option value="{{ name }}">{{ name|capitalize }}</option>{% endif %}
-        {% endfor %}
-      </select>
-      <button class="btn btn-outline-theme" onclick="testAI()">
-        <i class="bi bi-play me-1"></i>Test
+      <button class="btn btn-outline-theme" onclick="testAI()" {% if not config.OLLAMA_BASE_URL %}disabled{% endif %}>
+        <i class="bi bi-play me-1"></i>Test Ollama
       </button>
     </div>
     <div id="ai-test-result" class="alert" style="display:none;"></div>
 
-    <div class="alert alert-warning mt-3 small mb-0">
-      <i class="bi bi-exclamation-triangle me-2"></i>
-      <strong>AI Safety Notice:</strong> Report content is sent to AI providers when using AI generation.
-      Review your Privacy Policy obligations regarding data transfers to AI APIs.
+    <div class="alert alert-info mt-3 small mb-0">
+      <i class="bi bi-info-circle me-2"></i>
+      <strong>Self-Hosted Only:</strong> GhostPortal uses Ollama exclusively for AI generation.
+      No report data is sent to external cloud AI APIs. Configure Ollama at <code>OLLAMA_BASE_URL</code> in your <code>.env</code>.
     </div>
 
   </div>

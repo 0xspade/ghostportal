@@ -112,6 +112,7 @@ def search_program_names(query: str, limit: int = 20) -> list[dict]:
         {
             "id": str(r.id),
             "name": r.name,
+            "email": r.email or "",
             "use_count": r.use_count,
             "last_used": r.last_used_at.isoformat() if r.last_used_at else None,
         }
@@ -177,8 +178,9 @@ def rename_program_name(program_id: str, new_name: str) -> bool:
         existing = ProgramName.query.filter_by(name_normalized=new_norm).first()
         if existing and str(existing.id) != program_id:
             # Merge: add counts to the existing entry, delete this one
+            _epoch = datetime.min.replace(tzinfo=timezone.utc)
             existing.use_count += entry.use_count
-            if (entry.last_used_at or datetime.min) > (existing.last_used_at or datetime.min):
+            if (entry.last_used_at or _epoch) > (existing.last_used_at or _epoch):
                 existing.last_used_at = entry.last_used_at
             db.session.delete(entry)
         else:

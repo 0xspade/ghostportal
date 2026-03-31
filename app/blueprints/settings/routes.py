@@ -68,7 +68,7 @@ def index():
         'invite_extension': get_system_config('invite_extension_days', 30),
         'followup_schedule': get_system_config('followup_schedule', [30, 60, 90]),
         'followup_skip': get_system_config('followup_skip_if_replied', True),
-        'ai_provider': get_system_config('ai_default_provider', current_app.config.get('AI_DEFAULT_PROVIDER', 'anthropic')),
+        'ai_provider': get_system_config('ai_default_provider', current_app.config.get('AI_DEFAULT_PROVIDER', 'ollama')),
     }
 
     return render_template(
@@ -163,7 +163,7 @@ def test_telegram():
 @settings_bp.route("/settings/test-ai", methods=["POST"])
 @owner_required
 def test_ai():
-    provider = request.form.get("provider") or current_app.config.get("AI_DEFAULT_PROVIDER", "anthropic")
+    provider = "ollama"  # Only Ollama is supported
     prompt = request.form.get("prompt") or "Say 'GhostPortal AI test successful' in one sentence."
     try:
         from app.ai.provider import get_provider

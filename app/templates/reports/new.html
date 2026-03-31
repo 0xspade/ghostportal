@@ -57,9 +57,12 @@
           <div class="position-relative" id="program-wrapper">
             <input type="text" name="program_name" id="program-input" class="form-control"
                    maxlength="300" value="{{ (prefill or {}).get('program_name', '') }}"
-                   placeholder="e.g. Acme Corp — Bug Bounty" autocomplete="off">
-            <div id="program-dropdown" class="dropdown-menu w-100" style="display:none;"></div>
+                   placeholder="{% if programs %}Select from list or type a new name{% else %}e.g. Acme Corp — Bug Bounty{% endif %}"
+                   autocomplete="off">
+            <div id="program-dropdown" class="dropdown-menu w-100 shadow" style="display:none;max-height:240px;overflow-y:auto;z-index:1050;"></div>
           </div>
+          {# Embed program list as JSON for autocomplete + email auto-fill #}
+          <script id="program-data" type="application/json">[{% for p in programs %}{"name":{{ p.name|tojson }},"email":{{ (p.email or "")|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]</script>
         </div>
         <div class="col-md-4">
           <label class="form-label fw-bold">Target URL / Asset</label>
@@ -264,46 +267,53 @@
       <span class="badge bg-theme me-2">5</span>AI Assistance
     </div>
     <div class="card-body">
-      {% if ai_providers %}
-      <div class="row g-3 mb-3">
-        <div class="col-md-4">
-          <label class="form-label fw-bold small">AI Provider</label>
-          <select id="ai-provider-select" class="form-select">
-            {% for p in ai_providers %}
-            <option value="{{ p }}">{{ p|capitalize }}</option>
-            {% endfor %}
-          </select>
+      {% if ai_enabled %}
+        {% if ai_providers %}
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold small">AI Provider</label>
+            <select id="ai-provider-select" class="form-select">
+              {% for p in ai_providers %}
+              <option value="{{ p.id }}">{{ p.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-8">
+            <label class="form-label fw-bold small">Generation Mode</label>
+            <select id="ai-mode-select" class="form-select">
+              <option value="full_report">Full Report Draft</option>
+              <option value="improve_report">Improve Existing</option>
+              <option value="suggest_remediation">Generate Remediation</option>
+              <option value="explain_cvss">Explain CVSS</option>
+              <option value="suggest_cwe">Suggest CWE</option>
+            </select>
+          </div>
         </div>
-        <div class="col-md-8">
-          <label class="form-label fw-bold small">Generation Mode</label>
-          <select id="ai-mode-select" class="form-select">
-            <option value="full_report">Full Report Draft</option>
-            <option value="improve_report">Improve Existing</option>
-            <option value="suggest_remediation">Generate Remediation</option>
-            <option value="explain_cvss">Explain CVSS</option>
-            <option value="suggest_cwe">Suggest CWE</option>
-          </select>
+        <div class="mb-3">
+          <label class="form-label fw-bold small">Context / Notes for AI</label>
+          <textarea id="ai-context" class="form-control" rows="3"
+                    placeholder="Brief notes: vulnerability type, target, what you found..."></textarea>
         </div>
-      </div>
-      <div class="mb-3">
-        <label class="form-label fw-bold small">Context / Notes for AI</label>
-        <textarea id="ai-context" class="form-control" rows="3"
-                  placeholder="Brief notes: vulnerability type, target, what you found..."></textarea>
-      </div>
-      <div class="d-flex align-items-center gap-3">
-        <button type="button" id="ai-generate-btn" class="btn btn-theme" onclick="triggerAIGeneration()">
-          <i class="bi bi-lightning me-1"></i>Generate with AI
-        </button>
-        <div id="ai-status" class="d-flex align-items-center gap-2 text-inverse text-opacity-50" style="display:none!important;">
-          <div class="spinner-border spinner-border-sm text-theme"></div>
-          <span id="ai-status-text">Generating...</span>
+        <div class="d-flex align-items-center gap-3">
+          <button type="button" id="ai-generate-btn" class="btn btn-theme" onclick="triggerAIGeneration()">
+            <i class="bi bi-lightning me-1"></i>Generate with AI
+          </button>
+          <div id="ai-status" class="d-flex align-items-center gap-2 text-inverse text-opacity-50" style="display:none!important;">
+            <div class="spinner-border spinner-border-sm text-theme"></div>
+            <span id="ai-status-text">Generating...</span>
+          </div>
         </div>
-      </div>
-      <div id="ai-result-notice" class="alert alert-theme mt-3" style="display:none;">
-        <i class="bi bi-check-circle me-2"></i>AI Draft Generated — Review and edit before submitting.
-      </div>
+        <div id="ai-result-notice" class="alert alert-theme mt-3" style="display:none;">
+          <i class="bi bi-check-circle me-2"></i>AI Draft Generated — Review and edit before submitting.
+        </div>
+        {% else %}
+        <p class="text-inverse text-opacity-50 mb-0">Ollama not reachable. Check <code>OLLAMA_BASE_URL</code> in <code>.env</code>.</p>
+        {% endif %}
       {% else %}
-      <p class="text-inverse text-opacity-50 mb-0">No AI providers configured. Set an API key in <code>.env</code>.</p>
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-slash-circle text-secondary"></i>
+        <span class="text-inverse text-opacity-50">AI features are disabled. Set <code>AI_ENABLED=true</code> in <code>.env</code> to enable Ollama assistance.</span>
+      </div>
       {% endif %}
     </div>
   </div>
@@ -447,6 +457,65 @@
 <script src="{{ url_for('static', filename='js/ai_generator.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/program_autocomplete.js') }}" defer></script>
 <script>
+// ── Program Name Combo Dropdown ──────────────────────────────────────────────
+(function() {
+  var input = document.getElementById('program-input');
+  var dropdown = document.getElementById('program-dropdown');
+  if (!input || !dropdown) return;
+
+  var dataEl = document.getElementById('program-data');
+  var programs = [];
+  try { programs = JSON.parse(dataEl ? dataEl.textContent : '[]'); } catch(e) {}
+  if (!programs.length) return;
+
+  function renderDropdown(filtered) {
+    dropdown.innerHTML = '';
+    if (!filtered.length) { dropdown.style.display = 'none'; return; }
+    filtered.forEach(function(p) {
+      var item = document.createElement('a');
+      item.className = 'dropdown-item d-flex justify-content-between align-items-center';
+      item.href = '#';
+      item.style.cursor = 'pointer';
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = p.name;
+      item.appendChild(nameSpan);
+      if (p.email) {
+        var emailSpan = document.createElement('small');
+        emailSpan.className = 'text-muted ms-2';
+        emailSpan.textContent = p.email;
+        item.appendChild(emailSpan);
+      }
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        input.value = p.name;
+        dropdown.style.display = 'none';
+        // Auto-fill first recipient email if the program has one
+        if (p.email) {
+          var firstEmail = document.querySelector('input[name="recipient_emails[]"]');
+          if (firstEmail && !firstEmail.value) firstEmail.value = p.email;
+        }
+      });
+      dropdown.appendChild(item);
+    });
+    dropdown.style.display = 'block';
+  }
+
+  function filter(q) {
+    if (!q) return programs.slice(0, 15);
+    q = q.toLowerCase();
+    return programs.filter(function(p) {
+      return p.name.toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 15);
+  }
+
+  input.addEventListener('focus', function() { renderDropdown(filter(input.value)); });
+  input.addEventListener('input', function() { renderDropdown(filter(input.value)); });
+  document.addEventListener('click', function(e) {
+    if (!input.contains(e.target) && !dropdown.contains(e.target))
+      dropdown.style.display = 'none';
+  });
+})();
+
 function addRecipient() {
   var c = document.getElementById('recipients-container');
   var idx = c.children.length;

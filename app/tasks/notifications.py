@@ -218,6 +218,7 @@ def _send_owner_notification(event, invite, report):
         "status_changed": "Report Status Changed",
         "bounty_set":     "Bounty Amount Set",
         "bonus_set":      "Bonus Offered",
+        "bonus_confirmed": "Bonus Receipt Confirmed",
         "link_clicked":   "Invite Link Clicked",
         "setup_complete": "Security Team Portal Setup Complete",
     }
@@ -227,7 +228,26 @@ def _send_owner_notification(event, invite, report):
     report_url = f"{base_url}/reports/{report.id}"
 
     # Special subject/body for bounty events
-    if event == "bounty_set":
+    if event == "bonus_confirmed":
+        from app.models import BountyPayment as _BP_c
+        _bonus_c = (_BP_c.query
+                    .filter_by(report_id=report.id, is_bonus=True, status="completed")
+                    .order_by(_BP_c.completed_at.desc()).first())
+        amt_str = (f"{_bonus_c.amount} {_bonus_c.currency}" if _bonus_c else "amount confirmed")
+        subject = f"[{platform_name}] BONUS CONFIRMED — {amt_str} on {report.display_id}"
+        body = (
+            f"{'#' * 55}\n"
+            f"  {platform_name} — BONUS RECEIPT CONFIRMED\n"
+            f"{'#' * 55}\n\n"
+            f"  You have confirmed receipt of a bonus payment.\n\n"
+            f"  Report   : {report.display_id} — {report.title}\n"
+            f"  Company  : {company}\n"
+            f"  Severity : {severity}\n"
+            f"  Bonus    : {amt_str}\n"
+            f"  View     : {report_url}\n\n"
+            f"{'#' * 55}\n"
+        )
+    elif event == "bounty_set":
         bounty_amt = getattr(report, "bounty_amount", None)
         bounty_cur = getattr(report, "bounty_currency", "USD") or "USD"
         amt_str = f"{bounty_amt} {bounty_cur}" if bounty_amt else "amount TBD"
@@ -295,7 +315,22 @@ def _send_owner_notification(event, invite, report):
             "medium": 0xFFAA00, "low": 0x00AAFF, "informational": 0x888888,
         }
         color = _SEVERITY_COLORS.get(report.severity or "", 0x00FF88)
-        if event == "bounty_set":
+        if event == "bonus_confirmed":
+            # Green color to indicate confirmed/received
+            color = 0x00FF88
+            from app.models import BountyPayment as _BP_cd
+            _bonus_cd = (_BP_cd.query
+                         .filter_by(report_id=report.id, is_bonus=True, status="completed")
+                         .order_by(_BP_cd.completed_at.desc()).first())
+            amt_str = (f"{_bonus_cd.amount} {_bonus_cd.currency}" if _bonus_cd else "confirmed")
+            embed_fields = [
+                {"name": "Company",  "value": company,      "inline": True},
+                {"name": "Bonus",    "value": amt_str,      "inline": True},
+                {"name": "Severity", "value": severity,     "inline": True},
+                {"name": "Report",   "value": report.title, "inline": False},
+            ]
+            embed_title = f"BONUS CONFIRMED — {report.display_id}"
+        elif event == "bounty_set":
             # Gold color for bounty notifications
             color = 0xFFD700
             bounty_amt = getattr(report, "bounty_amount", None)
@@ -348,7 +383,21 @@ def _send_owner_notification(event, invite, report):
     tg_token = current_app.config.get("TELEGRAM_BOT_TOKEN", "")
     tg_chat = current_app.config.get("TELEGRAM_CHAT_ID", "")
     if tg_token and tg_chat:
-        if event == "bounty_set":
+        if event == "bonus_confirmed":
+            from app.models import BountyPayment as _BP_ct
+            _bonus_ct = (_BP_ct.query
+                         .filter_by(report_id=report.id, is_bonus=True, status="completed")
+                         .order_by(_BP_ct.completed_at.desc()).first())
+            amt_str = (f"{_bonus_ct.amount} {_bonus_ct.currency}" if _bonus_ct else "confirmed")
+            tg_text = (
+                f"<b>✅ BONUS CONFIRMED</b>\n"
+                f"Report: <code>{report.display_id}</code> — {report.title}\n"
+                f"Company: {company}\n"
+                f"Bonus: <b>{amt_str}</b>\n"
+                f"Severity: {severity}\n"
+                f'<a href="{report_url}">View Report</a>'
+            )
+        elif event == "bounty_set":
             bounty_amt = getattr(report, "bounty_amount", None)
             bounty_cur = getattr(report, "bounty_currency", "USD") or "USD"
             amt_str = f"{bounty_amt} {bounty_cur}" if bounty_amt else "TBD"

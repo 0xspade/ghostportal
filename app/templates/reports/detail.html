@@ -614,6 +614,38 @@
         </div>
         {% endfor %}
         {% endif %}
+        {# ── Total bounty row ── #}
+        {% set _ns_total = namespace(total=0.0, has_base=false, has_bonus=false, mixed_currency=false, currency='') %}
+        {% if report.bounty_amount and report.bounty_paid_at %}
+          {% set _ns_total.total = _ns_total.total + report.bounty_amount %}
+          {% set _ns_total.has_base = true %}
+          {% set _ns_total.currency = report.bounty_currency or 'USD' %}
+        {% endif %}
+        {% for _bp in payments %}
+          {% if _bp.status == 'completed' %}
+            {% if _ns_total.currency and _ns_total.currency != (_bp.currency or 'USD') %}
+              {% set _ns_total.mixed_currency = true %}
+            {% endif %}
+            {% if not _ns_total.currency %}{% set _ns_total.currency = _bp.currency or 'USD' %}{% endif %}
+            {% if _bp.is_bonus %}
+              {% set _ns_total.total = _ns_total.total + _bp.amount %}
+              {% set _ns_total.has_bonus = true %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {% if _ns_total.has_base or _ns_total.has_bonus %}
+        <hr class="border-inverse border-opacity-10 my-2">
+        <div class="d-flex align-items-center gap-2 py-1">
+          <i class="bi bi-calculator text-theme small"></i>
+          <span class="text-inverse text-opacity-50 small">Total received:</span>
+          {% if _ns_total.mixed_currency %}
+          <span class="fw-bold text-theme small">Multiple currencies — see breakdown above</span>
+          {% else %}
+          <span class="fw-bold text-theme">{{ "%.8g"|format(_ns_total.total) }} {{ _ns_total.currency }}</span>
+          {% if _ns_total.has_bonus %}<span class="badge bg-info text-dark" style="font-size:0.6rem;">incl. bonus</span>{% endif %}
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
     </div>
     {% endif %}

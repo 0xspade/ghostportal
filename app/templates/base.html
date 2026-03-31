@@ -75,6 +75,12 @@
             <span class="menu-text">Reports</span>
           </a>
         </div>
+        <div class="menu-item {% if request.blueprint == 'program_list' %}active{% endif %}">
+          <a href="{{ url_for('program_list.index') }}" class="menu-link">
+            <span class="menu-icon"><i class="bi bi-building"></i></span>
+            <span class="menu-text">Program List</span>
+          </a>
+        </div>
         <div class="menu-item {% if request.blueprint == 'security_teams' %}active{% endif %}">
           <a href="{{ url_for('security_teams.list_teams') }}" class="menu-link">
             <span class="menu-icon"><i class="bi bi-people"></i></span>

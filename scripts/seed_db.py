@@ -36,6 +36,7 @@ Or via Makefile:
 
 import json
 import os
+import re
 import sys
 import uuid
 
@@ -46,7 +47,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def seed():
     from app import create_app
     from app.extensions import db
-    from app.models import User, ReportTemplate
+    from app.models import User, ReportTemplate, ProgramName
 
     app = create_app()
 
@@ -117,6 +118,53 @@ def seed():
 
             db.session.commit()
             print(f"[OK]   Templates: {seeded_count} seeded, {skipped_count} already existed")
+
+        # ── 3. Program List ────────────────────────────────────────────────────
+        program_list_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "program_list.json",
+        )
+
+        if not os.path.exists(program_list_path):
+            print(f"[WARN] program_list.json not found at {program_list_path} — skipping")
+        else:
+            with open(program_list_path, encoding="utf-8") as f:
+                program_data = json.load(f)
+
+            programs = program_data.get("programs", [])
+            _email_re = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+            prog_seeded = 0
+            prog_skipped = 0
+
+            for entry in programs:
+                name = str(entry.get("program_name") or "").strip()
+                raw_email = str(entry.get("program_email") or "").strip()
+                email = raw_email if raw_email and _email_re.match(raw_email) else None
+                if not name:
+                    continue
+
+                name_normalized = name.lower().strip()
+                existing = ProgramName.query.filter_by(name_normalized=name_normalized).first()
+                if existing:
+                    # Update email if the existing entry has none
+                    if email and not existing.email:
+                        existing.email = email
+                        db.session.add(existing)
+                    prog_skipped += 1
+                    continue
+
+                prog = ProgramName(
+                    id=uuid.uuid4(),
+                    name=name,
+                    name_normalized=name_normalized,
+                    email=email,
+                    use_count=0,
+                )
+                db.session.add(prog)
+                prog_seeded += 1
+
+            db.session.commit()
+            print(f"[OK]   Programs: {prog_seeded} seeded, {prog_skipped} already existed")
 
         print("=" * 50)
         print("Seeding complete.")

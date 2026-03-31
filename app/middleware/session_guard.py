@@ -151,7 +151,13 @@ def _is_session_revoked(session_id: str, is_portal: bool = False) -> bool:
                     return bool(sess.is_revoked)
             except Exception as db_exc:
                 logger.error(f"DB fallback for session revocation also failed: {db_exc}")
-        return False  # Fail open if both checks fail
+        # Fail open — log at ERROR level so an alert can be triggered on Redis outage
+        logger.error(
+            "Session revocation check failed for session_id=%s (both Redis and DB unavailable) "
+            "— allowing request through. Investigate immediately.",
+            session_id,
+        )
+        return False
 
 
 _PORTAL_SESSION_KEYS = (

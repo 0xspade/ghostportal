@@ -720,12 +720,13 @@ class FollowUpSchedule(db.Model):
 # ---------------------------------------------------------------------------
 
 class ProgramName(db.Model):
-    """Auto-saved program names for owner autocomplete."""
+    """Auto-saved program names for owner autocomplete and program directory."""
     __tablename__ = "program_names"
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
     name = Column(String(300), nullable=False)
     name_normalized = Column(String(300), nullable=False, unique=True, index=True)
+    email = Column(String(254), nullable=True)  # Security contact email for this program
     last_used_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     use_count = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

@@ -19,7 +19,7 @@
 - **Security Team Invites** — per-report invite links with independent sessions, reply threads, and expiry tracking.
 - **Multi-Report Portal** — security team members can access all reports they're invited to from one dashboard.
 - **CVSS 4.0 Calculator** — interactive metric builder with live score computation and vector string.
-- **AI-Assisted Reports** — Anthropic Claude, OpenAI, Google Gemini, and Ollama (local) support via async Celery jobs.
+- **AI-Assisted Reports** — Ollama (self-hosted local LLM) for AI generation. No data sent to cloud AI APIs.
 - **Retest Workflow** — security team can request a retest after deploying a fix; researcher confirms the outcome (fixed / partial / not fixed). Full activity timeline tracking.
 - **Bounty Tracking** — PayPal Payouts API integration + manual crypto payment recording with on-chain confirmation. Bank transfer support.
 - **Bonus Bounty Payments** — after a retest is confirmed, security team can submit an additional bonus bounty payment, tracked separately with `is_bonus` flag.
@@ -599,6 +599,36 @@ The `BACKUP_ENCRYPTION_KEY` must be a base64-encoded 32-byte value. Generate a f
 ```bash
 python -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"
 ```
+
+---
+
+## Program List (`program_list.json`)
+
+GhostPortal ships with a `program_list.json` file at the repo root — a community-maintained directory of bug bounty programs and their security contact emails. You can import this file directly into your instance from the **Program List** page (`/programs/list → Import`).
+
+### JSON Format
+
+```json
+{
+  "programs": [
+    {"program_name": "Example Security", "program_email": "security@example.com"},
+    {"program_name": "XYZ Company",      "program_email": "admin@xyz.com"}
+  ]
+}
+```
+
+### Adding a Program to the Community List
+
+Want your bug bounty program included in the default `program_list.json`?
+
+1. **Open a GitHub issue** at [github.com/0xspade/ghostportal/issues](https://github.com/0xspade/ghostportal/issues) with the title: `[Program List] Add: <Your Program Name>`
+2. Include:
+   - **Program Name** — the public name of your bug bounty program
+   - **Security Contact Email** — the email address researchers should use to submit vulnerabilities
+   - **Program URL** (optional) — link to your bug bounty policy or HackerOne/Bugcrowd page
+3. The maintainer will verify and merge it into `program_list.json`.
+
+> **Note:** Only public bug bounty programs with a published security contact are accepted. Private programs are not listed. Listing in `program_list.json` does not imply endorsement.
 
 ---
 

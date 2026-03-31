@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Program List{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# ── Page Header ─────────────────────────────────────────────── #}
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h1 class="h4 fw-bold mb-1">
+        <i class="bi bi-building me-2 text-theme"></i>Program List
+      </h1>
+      <p class="text-muted small mb-0">
+        Directory of bug bounty programs and their security contact emails.
+        Used for autocomplete when creating reports.
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-theme btn-sm" data-bs-toggle="modal" data-bs-target="#addModal">
+        <i class="bi bi-plus-lg me-1"></i>Add Program
+      </button>
+      <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#importModal">
+        <i class="bi bi-upload me-1"></i>Import
+      </button>
+      <a href="{{ url_for('program_list.export') }}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-download me-1"></i>Export JSON
+      </a>
+    </div>
+  </div>
+
+  {# ── Program Table ────────────────────────────────────────────── #}
+  <div class="card">
+    <div class="card-arrow">
+      <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+      <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+    </div>
+    <div class="card-body p-0">
+      {% if programs %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="programTable">
+          <thead>
+            <tr>
+              <th class="ps-3">Program Name</th>
+              <th>Security Contact Email</th>
+              <th>Reports Used</th>
+              <th class="text-end pe-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in programs %}
+            <tr>
+              <td class="ps-3 fw-bold">{{ p.name }}</td>
+              <td>
+                {% if p.email %}
+                <a href="mailto:{{ p.email }}" class="text-info text-decoration-none">
+                  <i class="bi bi-envelope me-1"></i>{{ p.email }}
+                </a>
+                {% else %}
+                <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge bg-secondary">{{ p.use_count }}</span>
+              </td>
+              <td class="text-end pe-3">
+                <button class="btn btn-sm btn-outline-theme"
+                        onclick="openEditModal('{{ p.id }}', {{ p.name | tojson }}, {{ (p.email or '') | tojson }})"
+                        title="Edit">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger ms-1"
+                        onclick="openDeleteModal('{{ p.id }}', {{ p.name | tojson }})"
+                        title="Delete">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-building fs-1 d-block mb-2"></i>
+        No programs yet. Add one manually or import from JSON.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{# ── Add Modal ───────────────────────────────────────────────────── #}
+<div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form action="{{ url_for('program_list.add') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addModalLabel">
+            <i class="bi bi-plus-circle me-2 text-theme"></i>Add Program
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Program Name <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" maxlength="300"
+                   placeholder="e.g. Example Security" required autocomplete="off">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Security Contact Email</label>
+            <input type="email" name="email" class="form-control" maxlength="254"
+                   placeholder="e.g. security@example.com" autocomplete="off">
+            <div class="form-text">Optional. Used for report invite pre-fill.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-theme">
+            <i class="bi bi-plus me-1"></i>Add Program
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Edit Modal ──────────────────────────────────────────────────── #}
+<div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="editForm" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editModalLabel">
+            <i class="bi bi-pencil me-2 text-theme"></i>Edit Program
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Program Name <span class="text-danger">*</span></label>
+            <input type="text" id="editName" name="name" class="form-control" maxlength="300" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Security Contact Email</label>
+            <input type="email" id="editEmail" name="email" class="form-control" maxlength="254">
+            <div class="form-text">Leave blank to remove the email.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-theme">
+            <i class="bi bi-check me-1"></i>Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Delete Modal ────────────────────────────────────────────────── #}
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="deleteForm" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="deleteModalLabel">
+            <i class="bi bi-trash me-2 text-danger"></i>Delete Program
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>Are you sure you want to delete <strong id="deleteNameDisplay"></strong>?</p>
+          <p class="text-muted small">This will not affect existing reports that used this program name.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">
+            <i class="bi bi-trash me-1"></i>Delete
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Import Modal ────────────────────────────────────────────────── #}
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <form action="{{ url_for('program_list.import_programs') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title" id="importModalLabel">
+            <i class="bi bi-upload me-2 text-info"></i>Import Programs
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+
+          <div class="alert alert-info small">
+            <i class="bi bi-info-circle me-1"></i>
+            Existing programs (matched by name) will not be overwritten — only new entries are added.
+            If an existing entry has no email and the import provides one, the email is updated.
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Upload JSON File</label>
+            <input type="file" name="json_file" class="form-control" accept=".json">
+            <div class="form-text">Max 1 MB. Must be a valid JSON file.</div>
+          </div>
+
+          <div class="text-center my-2 text-muted small">— or paste JSON below —</div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Paste JSON</label>
+            <textarea name="json_text" class="form-control font-monospace" rows="8"
+                      placeholder='{"programs":[{"program_name":"Example Security","program_email":"security@example.com"}]}'
+                      spellcheck="false"></textarea>
+          </div>
+
+          <div class="card bg-dark border-secondary p-2 small font-monospace text-muted">
+            <strong class="d-block mb-1">Expected format:</strong>
+            {<br>
+            &nbsp;&nbsp;"programs": [<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;{"program_name": "Example Security", "program_email": "security@example.com"},<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;{"program_name": "XYZ Company", "program_email": "admin@xyz.com"}<br>
+            &nbsp;&nbsp;]<br>
+            }
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-info">
+            <i class="bi bi-upload me-1"></i>Import
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openEditModal(id, name, email) {
+  const baseUrl = "{{ url_for('program_list.index') }}";
+  document.getElementById('editForm').action =
+    '/programs/list/' + id + '/edit';
+  document.getElementById('editName').value = name;
+  document.getElementById('editEmail').value = email;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+function openDeleteModal(id, name) {
+  document.getElementById('deleteForm').action =
+    '/programs/list/' + id + '/delete';
+  document.getElementById('deleteNameDisplay').textContent = name;
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

@@ -1,17 +1,19 @@
 # GhostPortal AI generation routes
-from flask import jsonify, request, session
+from flask import current_app, jsonify, request, session
 from app.blueprints.ai_bp import ai_bp
 
 @ai_bp.route("/ai/generate", methods=["POST"])
 def generate():
     if session.get("role") != "owner":
         return jsonify({"error": "unauthorized"}), 401
+    if not current_app.config.get("AI_ENABLED"):
+        return jsonify({"error": "AI features are disabled. Set AI_ENABLED=true in .env to enable."}), 403
     data = request.get_json() or {}
     from app.models import AIGenerationJob
     from app.extensions import db
     job = AIGenerationJob(
-        provider=data.get("provider","anthropic"),
-        model=data.get("model","claude-opus-4-5"),
+        provider=data.get("provider","ollama"),
+        model=data.get("model", current_app.config.get("OLLAMA_MODEL", "llama3.1")),
         prompt_type=data.get("prompt_type","full_report"),
         status="pending", input_context=data,
     )

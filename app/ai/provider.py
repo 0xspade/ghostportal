@@ -5,16 +5,15 @@
 """
 AI Provider abstraction layer.
 
-Supports: Anthropic Claude, OpenAI GPT, Google Gemini, Ollama (local).
+Supports: Ollama (self-hosted local LLM only).
 
 Usage:
     from app.ai.provider import get_provider
-    provider = get_provider("anthropic")
+    provider = get_provider()
     result = await provider.generate(prompt="...", system="...")
 """
 
 import logging
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
@@ -40,81 +39,8 @@ class AIProvider(ABC):
         pass
 
 
-class AnthropicProvider(AIProvider):
-    """Anthropic Claude provider."""
-
-    def __init__(self):
-        from flask import current_app
-        self.api_key = current_app.config.get("ANTHROPIC_API_KEY", "")
-        self.model = current_app.config.get("ANTHROPIC_MODEL", "claude-opus-4-5")
-
-    async def generate(self, prompt: str, system: str) -> AIResult:
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured")
-        import anthropic
-        client = anthropic.Anthropic(api_key=self.api_key)
-        message = client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = message.content[0].text if message.content else ""
-        tokens = (message.usage.input_tokens or 0) + (message.usage.output_tokens or 0)
-        return AIResult(text=text, tokens_used=tokens, provider="anthropic", model=self.model)
-
-
-class OpenAIProvider(AIProvider):
-    """OpenAI GPT provider."""
-
-    def __init__(self):
-        from flask import current_app
-        self.api_key = current_app.config.get("OPENAI_API_KEY", "")
-        self.model = current_app.config.get("OPENAI_MODEL", "gpt-4o")
-
-    async def generate(self, prompt: str, system: str) -> AIResult:
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY not configured")
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=self.api_key)
-        resp = await client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=4096,
-        )
-        text = resp.choices[0].message.content or ""
-        tokens = resp.usage.total_tokens if resp.usage else 0
-        return AIResult(text=text, tokens_used=tokens, provider="openai", model=self.model)
-
-
-class GeminiProvider(AIProvider):
-    """Google Gemini provider."""
-
-    def __init__(self):
-        from flask import current_app
-        self.api_key = current_app.config.get("GEMINI_API_KEY", "")
-        self.model = current_app.config.get("GEMINI_MODEL", "gemini-1.5-pro")
-
-    async def generate(self, prompt: str, system: str) -> AIResult:
-        if not self.api_key:
-            raise ValueError("GEMINI_API_KEY not configured")
-        import google.generativeai as genai
-        genai.configure(api_key=self.api_key)
-        model = genai.GenerativeModel(
-            model_name=self.model,
-            system_instruction=system,
-        )
-        response = model.generate_content(prompt)
-        text = response.text or ""
-        tokens = getattr(response.usage_metadata, "total_token_count", 0)
-        return AIResult(text=text, tokens_used=tokens, provider="gemini", model=self.model)
-
-
 class OllamaProvider(AIProvider):
-    """Ollama local LLM provider."""
+    """Ollama self-hosted local LLM provider."""
 
     def __init__(self):
         from flask import current_app
@@ -141,9 +67,6 @@ class OllamaProvider(AIProvider):
 
 
 _PROVIDERS = {
-    "anthropic": AnthropicProvider,
-    "openai": OpenAIProvider,
-    "gemini": GeminiProvider,
     "ollama": OllamaProvider,
 }
 
@@ -153,48 +76,39 @@ def get_provider(name: Optional[str] = None) -> AIProvider:
     Get an AI provider instance by name.
 
     Args:
-        name: Provider name (anthropic, openai, gemini, ollama).
-              Defaults to AI_DEFAULT_PROVIDER from config.
+        name: Provider name. Only "ollama" is supported.
+              Defaults to AI_DEFAULT_PROVIDER from config (must be "ollama").
 
     Returns:
-        AIProvider instance.
+        OllamaProvider instance.
 
     Raises:
         ValueError: If provider name is unknown.
     """
     from flask import current_app
     if name is None:
-        name = current_app.config.get("AI_DEFAULT_PROVIDER", "anthropic")
+        name = current_app.config.get("AI_DEFAULT_PROVIDER", "ollama")
+
+    # Only Ollama is supported — reject any other provider name gracefully
+    if name != "ollama":
+        logger.warning("AI provider '%s' is not supported; falling back to ollama.", name)
+        name = "ollama"
 
     provider_class = _PROVIDERS.get(name)
     if not provider_class:
-        raise ValueError(f"Unknown AI provider: {name}. Valid: {list(_PROVIDERS.keys())}")
+        raise ValueError(f"Unknown AI provider: {name}. Only 'ollama' is supported.")
 
     return provider_class()
 
 
 def get_configured_providers() -> list[str]:
     """
-    Return list of AI providers that have API keys configured.
+    Return list of configured AI providers (only Ollama is supported).
 
     Returns:
-        List of provider name strings.
+        ["ollama"] if OLLAMA_BASE_URL is set, else [].
     """
     from flask import current_app
-
-    configured = []
-    checks = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "ollama": None,  # Ollama is always available if URL is set
-    }
-
-    for provider, key in checks.items():
-        if key is None:
-            if current_app.config.get("OLLAMA_BASE_URL"):
-                configured.append(provider)
-        elif current_app.config.get(key):
-            configured.append(provider)
-
-    return configured
+    if current_app.config.get("OLLAMA_BASE_URL"):
+        return ["ollama"]
+    return []

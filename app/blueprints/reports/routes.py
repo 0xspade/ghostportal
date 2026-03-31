@@ -119,17 +119,16 @@ def list_reports():
 def new_report():
     templates = ReportTemplate.query.order_by(ReportTemplate.name).all()
 
-    # Build list of configured AI providers
+    # Ollama is the only supported AI provider
+    ai_enabled = current_app.config.get("AI_ENABLED", False)
     ai_providers = []
-    _ai_map = {
-        "anthropic": ("Anthropic Claude", "ANTHROPIC_API_KEY"),
-        "openai": ("OpenAI", "OPENAI_API_KEY"),
-        "gemini": ("Google Gemini", "GEMINI_API_KEY"),
-        "ollama": ("Ollama (Local)", None),
-    }
-    for key, (label, env_key) in _ai_map.items():
-        if env_key is None or current_app.config.get(env_key):
-            ai_providers.append({"id": key, "label": label})
+    if ai_enabled and current_app.config.get("OLLAMA_BASE_URL"):
+        ai_providers.append({"id": "ollama", "label": "Ollama (Self-Hosted)"})
+
+    # Programs list for dropdown (most-used first)
+    programs = (ProgramName.query
+                .order_by(ProgramName.use_count.desc(), ProgramName.last_used_at.desc())
+                .all())
 
     if request.method == "GET":
         template_id = request.args.get("template")
@@ -157,6 +156,8 @@ def new_report():
             templates=templates,
             prefill=prefill,
             ai_providers=ai_providers,
+            ai_enabled=ai_enabled,
+            programs=programs,
             platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
         )
 
@@ -165,7 +166,8 @@ def new_report():
     if not fields["title"]:
         flash("Report title is required.", "error")
         return render_template("reports/new.html", templates=templates, prefill=fields,
-                               ai_providers=ai_providers,
+                               ai_providers=ai_providers, ai_enabled=ai_enabled,
+                               programs=programs,
                                platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"))
 
     # Secrets scan
@@ -475,16 +477,13 @@ def edit_report(report_uuid):
 
     if request.method == "GET":
         templates = ReportTemplate.query.order_by(ReportTemplate.name).all()
+        ai_enabled = current_app.config.get("AI_ENABLED", False)
         ai_providers = []
-        _ai_map = {
-            "anthropic": ("Anthropic Claude", "ANTHROPIC_API_KEY"),
-            "openai": ("OpenAI", "OPENAI_API_KEY"),
-            "gemini": ("Google Gemini", "GEMINI_API_KEY"),
-            "ollama": ("Ollama (Local)", None),
-        }
-        for key, (label, env_key) in _ai_map.items():
-            if env_key is None or current_app.config.get(env_key):
-                ai_providers.append({"id": key, "label": label})
+        if ai_enabled and current_app.config.get("OLLAMA_BASE_URL"):
+            ai_providers.append({"id": "ollama", "label": "Ollama (Self-Hosted)"})
+        programs = (ProgramName.query
+                    .order_by(ProgramName.use_count.desc(), ProgramName.last_used_at.desc())
+                    .all())
         prefill = {
             "title": report.title or "",
             "description": report.description or "",
@@ -509,6 +508,8 @@ def edit_report(report_uuid):
             templates=templates,
             prefill=prefill,
             ai_providers=ai_providers,
+            ai_enabled=ai_enabled,
+            programs=programs,
             is_edit=True,
             edit_report_uuid=str(report.id),
             platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
@@ -1041,6 +1042,37 @@ def confirm_bonus_receipt(report_uuid, payment_uuid):
             metadata_={"amount": str(payment.amount), "currency": payment.currency or "USD"},
         ))
     db.session.commit()
+
+    # Notify owner of bonus confirmation via all channels
+    try:
+        from app.tasks.notifications import notify_owner as _notify_owner
+        _target_invite_id = str(payment.invite_id) if payment.invite_id else (
+            str(_log_invite_ids[0]) if _log_invite_ids else None
+        )
+        if _target_invite_id:
+            _notify_owner.delay(
+                event="bonus_confirmed",
+                invite_id=_target_invite_id,
+                report_id=str(rid),
+                amount=str(payment.amount),
+                currency=payment.currency or "USD",
+            )
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "notify_owner failed for bonus_confirmed: %s", _exc
+        )
+
+    # Notify the security team that the researcher confirmed their bonus
+    try:
+        from app.tasks.notifications import notify_security_team as _notify_st
+        _notify_st.delay(event="bonus_confirmed", report_id=str(rid))
+    except Exception as _exc2:
+        import logging as _logging2
+        _logging2.getLogger(__name__).warning(
+            "notify_security_team failed for bonus_confirmed: %s", _exc2
+        )
+
     flash("Bonus receipt confirmed.", "success")
     return redirect(url_for("reports.view_report", report_uuid=report_uuid))
 

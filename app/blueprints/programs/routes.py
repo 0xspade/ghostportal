@@ -18,6 +18,7 @@ def search():
     return jsonify([{
         "id": str(r.id),
         "name": r.name,
+        "email": r.email or "",
         "use_count": r.use_count,
         "last_used": r.last_used_at.isoformat() if r.last_used_at else None,
     } for r in results])

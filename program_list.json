@@ -1,0 +1,28 @@
+{
+  "programs": [
+    {
+      "program_name": "Example Security",
+      "program_email": "security@example.com"
+    },
+    {
+      "program_name": "HackerOne",
+      "program_email": "security@hackerone.com"
+    },
+    {
+      "program_name": "Bugcrowd",
+      "program_email": "security@bugcrowd.com"
+    },
+    {
+      "program_name": "Synack",
+      "program_email": "security@synack.com"
+    },
+    {
+      "program_name": "Intigriti",
+      "program_email": "security@intigriti.com"
+    },
+    {
+      "program_name": "YesWeHack",
+      "program_email": "security@yeswehack.com"
+    }
+  ]
+}
