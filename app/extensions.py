@@ -33,10 +33,9 @@ import os as _os
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["2000 per day", "500 per hour"],
-    # Use Redis for rate limit storage so counters are shared across all
-    # Gunicorn workers and survive app restarts. Falls back to memory if
-    # REDIS_URL is not yet set at import time (initialised later in create_app).
-    storage_uri=_os.environ.get("REDIS_URL", "memory://"),
+    # Storage URI is overridden in create_app() after Redis availability check.
+    # Uses RATELIMIT_STORAGE_URI from app config (set before limiter.init_app).
+    storage_uri="memory://",
 )
 
 celery = Celery(__name__)

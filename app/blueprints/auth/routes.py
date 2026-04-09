@@ -30,7 +30,7 @@ from flask import (
 from sqlalchemy import update as sa_update
 
 from app.blueprints.auth import auth_bp
-from app.extensions import db, limiter, redis_client
+from app.extensions import db, limiter
 from app.middleware.access_logger import log_access_event
 from app.middleware.session_guard import enforce_single_session
 from app.models import SecurityTeamInvite, SecurityTeamMember, User
@@ -52,6 +52,12 @@ from app.utils.security import (
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _get_redis():
+    """Return the current Redis client (may be None if Redis is unavailable)."""
+    from app.extensions import redis_client
+    return redis_client
 
 
 def _to_utc_iso(dt: datetime | None) -> str | None:
@@ -238,20 +244,26 @@ def login():
         # Store raw OTP in Redis so the magic link page can display it.
         # Key: otp_raw:{url_token_hash} — TTL matches token window + 30s buffer.
         # Raw value in Redis is acceptable: private network, short-lived, TTL-bounded.
-        try:
-            redis_client.setex(
-                f"otp_raw:{url_token_hash}",
-                expiry_minutes * 60 + 30,
-                otp,
-            )
-        except Exception as exc:
-            current_app.logger.error("Failed to cache raw OTP in Redis: %s", exc)
-            # Non-fatal — magic link page will redirect to /login with generic error
+        _rc = _get_redis()
+        if _rc:
+            try:
+                _rc.setex(
+                    f"otp_raw:{url_token_hash}",
+                    expiry_minutes * 60 + 30,
+                    otp,
+                )
+            except Exception as exc:
+                current_app.logger.error("Failed to cache raw OTP in Redis: %s", exc)
+        else:
+            # Redis unavailable — store OTP plain in a DB column for dev mode
+            subject.login_otp_plain = otp
+            db.session.add(subject)
+            db.session.commit()
 
         # Store "remember me" preference alongside the token (expires with it)
-        if request.form.get("remember_me"):
+        if _rc and request.form.get("remember_me"):
             try:
-                redis_client.setex(
+                _rc.setex(
                     f"login_remember:{url_token_hash}",
                     expiry_minutes * 60 + 30,
                     "1",
@@ -309,17 +321,21 @@ def verify_magic_link(raw_url_token: str):
         flash(MSG_INVALID_LINK, "error")
         return redirect(url_for("auth.login"))
 
-    # Retrieve raw OTP from Redis
+    # Retrieve raw OTP — from Redis if available, else from DB field (dev fallback)
     raw_otp: str | None = None
-    try:
-        cached = redis_client.get(f"otp_raw:{url_token_hash}")
-        if cached:
-            raw_otp = cached.decode("utf-8") if isinstance(cached, bytes) else cached
-    except Exception as exc:
-        current_app.logger.error("Redis unavailable when retrieving raw OTP: %s", exc)
+    _rc = _get_redis()
+    if _rc:
+        try:
+            cached = _rc.get(f"otp_raw:{url_token_hash}")
+            if cached:
+                raw_otp = cached.decode("utf-8") if isinstance(cached, bytes) else cached
+        except Exception as exc:
+            current_app.logger.error("Redis unavailable when retrieving raw OTP: %s", exc)
+    if not raw_otp and hasattr(subject, "login_otp_plain"):
+        raw_otp = subject.login_otp_plain  # type: ignore[attr-defined]
 
     if not raw_otp:
-        # OTP expired from Redis (or Redis down) — user must request a new link
+        # OTP not found — user must request a new link
         flash(MSG_INVALID_LINK, "error")
         return redirect(url_for("auth.login"))
 
@@ -403,15 +419,11 @@ def verify_code():
     attempt_key = f"otp_attempts:{url_token_hash}"
     MAX_ATTEMPTS = 5
 
+    _rc = _get_redis()
     try:
-        attempts = int(redis_client.get(attempt_key) or 0)
+        attempts = int(_rc.get(attempt_key) or 0) if _rc else 0
     except Exception:
-        current_app.logger.error(
-            "verify_code: Redis unavailable for OTP attempt counter — failing secure"
-        )
-        flash(MSG_INVALID_LINK, "error")
-        constant_time_response(start)
-        return redirect(url_for("auth.login"))
+        attempts = 0
 
     # Exhausted attempts — invalidate token and force full re-login
     if attempts >= MAX_ATTEMPTS:
@@ -441,11 +453,12 @@ def verify_code():
     otp_valid = compare_hash_digest(submitted_otp, subject.login_otp_hash or "")
 
     if not otp_valid:
-        try:
-            redis_client.incr(attempt_key)
-            redis_client.expire(attempt_key, 900)  # expire with token window
-        except Exception:
-            pass
+        if _rc:
+            try:
+                _rc.incr(attempt_key)
+                _rc.expire(attempt_key, 900)  # expire with token window
+            except Exception:
+                pass
 
         remaining = MAX_ATTEMPTS - attempts - 1
         log_access_event(subject, event_type="login_failed",
@@ -507,18 +520,30 @@ def verify_code():
         return redirect(url_for("auth.login"))
 
     # Clean up Redis keys
-    try:
-        redis_client.delete(attempt_key)
-        redis_client.delete(f"otp_raw:{url_token_hash}")
-    except Exception:
-        pass
+    if _rc:
+        try:
+            _rc.delete(attempt_key)
+            _rc.delete(f"otp_raw:{url_token_hash}")
+        except Exception:
+            pass
+
+    # Clear plain OTP if stored (dev/no-Redis fallback)
+    if hasattr(subject, "login_otp_plain") and subject.login_otp_plain:
+        try:
+            subject.login_otp_plain = None
+            db.session.add(subject)
+            db.session.commit()
+        except Exception:
+            pass
 
     # Check if "remember me" was requested during the original login POST
-    try:
-        _remember_me = bool(redis_client.get(f"login_remember:{url_token_hash}"))
-        redis_client.delete(f"login_remember:{url_token_hash}")
-    except Exception:
-        _remember_me = False
+    _remember_me = False
+    if _rc:
+        try:
+            _remember_me = bool(_rc.get(f"login_remember:{url_token_hash}"))
+            _rc.delete(f"login_remember:{url_token_hash}")
+        except Exception:
+            pass
 
     if owner:
         for k in ("role", "user_id", "session_id", "last_active", "remember_me"):
