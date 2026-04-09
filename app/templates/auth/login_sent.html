@@ -155,6 +155,7 @@
 <script>
 (function () {
   var expiryIso = {{ expiry_iso | tojson }};
+  var loginUrl  = {{ url_for('auth.login') | tojson }};
   if (!expiryIso) return;
   var expiry = new Date(expiryIso).getTime();
   var countdownEl = document.getElementById('expiry-countdown');
@@ -165,7 +166,7 @@
     if (remaining <= 0) {
       countdownEl.textContent = 'expired';
       countdownEl.style.color = '#ff3366';
-      expiryRow.innerHTML = '<span style="color:#ff3366;"><i class="bi bi-x-circle me-1"></i>Code expired — <a href="{{ url_for(\'auth.login\') }}">request a new link</a></span>';
+      expiryRow.innerHTML = '<span style="color:#ff3366;"><i class="bi bi-x-circle me-1"></i>Code expired \u2014 <a href="' + loginUrl + '">request a new link</a></span>';
       return;
     }
     var m = Math.floor(remaining / 60);
