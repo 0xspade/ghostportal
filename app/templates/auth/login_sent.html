@@ -6,6 +6,9 @@
   <title>Enter Login Code — {{ config.PLATFORM_NAME | default('GhostPortal') }}</title>
   <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+  {% if hcaptcha_site_key %}
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+  {% endif %}
 </head>
 <body>
 <div id="app" class="app app-full-height app-without-header">
@@ -93,7 +96,7 @@
                 name="otp"
                 class="form-control form-control-lg bg-inverse bg-opacity-5 font-monospace text-center"
                 placeholder="Paste your {{ otp_length | default(20) }}-character code here"
-                maxlength="25"
+                maxlength="30"
                 autocomplete="one-time-code"
                 spellcheck="false"
                 autocorrect="off"
@@ -109,6 +112,12 @@
                 {{ otp_length | default(20) }} characters (A–Z, a–z, 0–9). Spaces are ignored — paste directly.
               </div>
             </div>
+
+            {% if hcaptcha_site_key %}
+            <div class="d-flex justify-content-center mb-3">
+              <div class="h-captcha" data-sitekey="{{ hcaptcha_site_key }}" data-theme="dark"></div>
+            </div>
+            {% endif %}
 
             <button
               type="submit"

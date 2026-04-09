@@ -163,6 +163,7 @@ def login():
             masked_email=masked,
             expiry_iso=exp_iso,
             otp_length=otp_length,
+            hcaptcha_site_key=current_app.config.get("HCAPTCHA_SITE_KEY", ""),
         ), 200
 
     # --- Honeypot check (bots fill hidden fields) ---
@@ -351,6 +352,24 @@ def verify_code():
     otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
     expiry_minutes = int(current_app.config.get("MAGIC_LINK_EXPIRY_MINUTES", 15))
 
+    # hCaptcha verification (if configured)
+    hcaptcha_token = request.form.get("h-captcha-response", "")
+    if not _verify_hcaptcha(hcaptcha_token):
+        flash(MSG_RATE_LIMITED, "error")
+        constant_time_response(start)
+        # Re-render with the email pre-filled so user doesn't have to retype
+        email_pre = request.form.get("email", "").strip().lower()
+        masked = (email_pre[0] + "***@" + email_pre.split("@")[1]) if "@" in email_pre else "***"
+        return render_template(
+            "auth/login_sent.html",
+            platform_name=platform_name,
+            email=email_pre,
+            masked_email=masked,
+            expiry_iso=_to_utc_iso(utcnow() + timedelta(minutes=expiry_minutes)),
+            otp_length=otp_length,
+            hcaptcha_site_key=current_app.config.get("HCAPTCHA_SITE_KEY", ""),
+        ), 200
+
     email = request.form.get("email", "").strip().lower()
     submitted_otp = request.form.get("otp", "").strip().replace(" ", "")
 
@@ -373,6 +392,7 @@ def verify_code():
             expiry_iso=_to_utc_iso(subj_expiry) if subj_expiry else expiry_fallback,
             otp_length=otp_length,
             attempts_remaining=attempts_left,
+            hcaptcha_site_key=current_app.config.get("HCAPTCHA_SITE_KEY", ""),
         ), 200
 
     owner = User.query.filter_by(email=email).first()
