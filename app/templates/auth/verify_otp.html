@@ -3,9 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Enter Verification Code — {{ config.PLATFORM_NAME | default('GhostPortal') }}</title>
+  <title>Your Login Code — {{ config.PLATFORM_NAME | default('GhostPortal') }}</title>
   <link href="{{ url_for('static', filename='hud/css/vendor.min.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='hud/css/app.min.css') }}" rel="stylesheet">
+  <style>
+    .code-display {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 600;
+      letter-spacing: .25em;
+      color: #00ff88;
+      text-shadow: 0 0 16px rgba(0,255,136,.5);
+      background: rgba(0,255,136,.05);
+      border: 1px solid rgba(0,255,136,.25);
+      border-radius: 4px;
+      padding: 1rem 1.5rem;
+      text-align: center;
+      word-break: break-all;
+      user-select: all;
+      cursor: text;
+    }
+    .copy-btn-success { color: #00ff88 !important; border-color: #00ff88 !important; }
+  </style>
 </head>
 <body>
 <div id="app" class="app app-full-height app-without-header">
@@ -17,16 +36,6 @@
       </h1>
       <p class="text-center text-inverse text-opacity-50 mb-4">Secure Vulnerability Disclosure Platform</p>
 
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-          <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'warning' if category == 'warning' else 'info' }} mb-3" role="alert">
-            {{ message }}
-          </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-
       <div class="card mb-3">
         <div class="card-arrow">
           <div class="card-arrow-top-left"></div>
@@ -34,79 +43,46 @@
           <div class="card-arrow-bottom-left"></div>
           <div class="card-arrow-bottom-right"></div>
         </div>
-        <div class="card-header fw-bold">
-          <i class="bi bi-key me-2 text-theme"></i>Enter Verification Code
+
+        <div class="card-header fw-bold d-flex align-items-center gap-2">
+          <i class="bi bi-key text-theme"></i>
+          Your Login Code
         </div>
+
         <div class="card-body">
-          <p class="text-inverse text-opacity-50 small mb-3">
-            Type the {{ otp_length | default(20) }}-character code from your email.
-            The code uses letters (A–Z, a–z) and digits (0–9).
+
+          <p class="text-inverse text-opacity-75 small mb-4">
+            Copy this code and paste it into the <strong>original login tab</strong>.
+            Do not share this code with anyone.
           </p>
 
-          {% if attempts_remaining is not none %}
-          <div class="alert alert-warning small mb-3" role="status" aria-live="polite">
-            <i class="bi bi-exclamation-triangle me-1"></i>
-            <strong>{{ attempts_remaining }} attempt{{ 's' if attempts_remaining != 1 else '' }} remaining</strong>
-          </div>
-          {% endif %}
+          {# ── OTP display ── #}
+          <div class="code-display mb-3" id="otp-code" aria-label="Login code">{{ otp_display }}</div>
 
-          <form
-            action="{{ url_for('auth.verify_magic_link', raw_url_token=url_token) }}"
-            method="post"
-            id="otp-form"
-            novalidate
-          >
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            <div class="mb-3">
-              <label for="otp" class="form-label fw-bold">Verification Code</label>
-              <input
-                type="text"
-                id="otp"
-                name="otp"
-                class="form-control form-control-lg bg-inverse bg-opacity-5 font-monospace text-center"
-                placeholder="ABCDE 12345 fghij 67890"
-                maxlength="25"
-                autocomplete="one-time-code"
-                spellcheck="false"
-                autocorrect="off"
-                autocapitalize="off"
-                inputmode="text"
-                required
-                aria-required="true"
-                aria-label="Enter your {{ otp_length | default(20) }}-character verification code"
-                data-otp-length="{{ otp_length | default(20) }}"
-                style="letter-spacing:0.15em;"
-              >
-              <div class="form-text text-inverse text-opacity-50">
-                Code is {{ otp_length | default(20) }} characters. Spaces are ignored — you can paste directly.
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              class="btn btn-outline-theme btn-lg d-block w-100 fw-bold"
-              id="otp-submit"
-              disabled
-            >
-              <i class="bi bi-shield-check me-2"></i>Verify Access
+          <div class="d-grid mb-4">
+            <button type="button" class="btn btn-outline-theme fw-bold" id="copy-btn">
+              <i class="bi bi-clipboard me-2"></i>Copy Code
             </button>
-          </form>
-
-          <div class="text-center mt-3">
-            <a href="{{ url_for('auth.login') }}" class="text-inverse text-opacity-50 small text-decoration-none">
-              <i class="bi bi-arrow-left me-1"></i>Request a new link
-            </a>
           </div>
+
+          {# ── Countdown ── #}
+          <div class="text-center small text-inverse text-opacity-50 mb-3" id="expiry-row">
+            Code expires in <strong id="expiry-countdown">—</strong>
+          </div>
+
+          {# ── Reminder ── #}
+          <div class="alert alert-theme bg-opacity-10 border-0 small mb-0">
+            <i class="bi bi-arrow-left-circle me-2"></i>
+            Switch back to the original tab, paste the code into the login field, and click
+            <strong>Verify &amp; Sign In</strong>.
+          </div>
+
         </div>
       </div>
 
       <div class="text-center small text-inverse text-opacity-50">
         <a href="{{ url_for('legal.terms') }}" class="text-inverse text-opacity-50 text-decoration-none me-3">Terms of Service</a>
-        <a href="{{ url_for('legal.privacy') }}" class="text-inverse text-opacity-50 text-decoration-none me-3">Privacy Policy</a>
-        <a href="https://github.com/0xspade/ghostportal" target="_blank" rel="noopener noreferrer" class="text-decoration-none" style="color:#00ff88;">
-          <i class="bi bi-github me-1"></i>Open Source
-        </a>
+        <a href="{{ url_for('legal.privacy') }}" class="text-inverse text-opacity-50 text-decoration-none">Privacy Policy</a>
       </div>
 
     </div>
@@ -114,10 +90,51 @@
 </div>
 <script src="{{ url_for('static', filename='hud/js/vendor.min.js') }}"></script>
 <script src="{{ url_for('static', filename='hud/js/app.min.js') }}"></script>
-<script
-  src="{{ url_for('static', filename='js/otp_input.js') }}"
-  defer
-  data-otp-length="{{ otp_length | default(20) | int }}"
-></script>
+<script>
+(function () {
+  /* ── Copy button ── */
+  var rawOtp = {{ raw_otp | tojson }};
+  var copyBtn = document.getElementById('copy-btn');
+  copyBtn.addEventListener('click', function () {
+    navigator.clipboard.writeText(rawOtp).then(function () {
+      copyBtn.innerHTML = '<i class="bi bi-clipboard-check me-2"></i>Copied!';
+      copyBtn.classList.add('copy-btn-success');
+      setTimeout(function () {
+        copyBtn.innerHTML = '<i class="bi bi-clipboard me-2"></i>Copy Code';
+        copyBtn.classList.remove('copy-btn-success');
+      }, 3000);
+    }).catch(function () {
+      /* Fallback for browsers without clipboard API */
+      var el = document.getElementById('otp-code');
+      var range = document.createRange();
+      range.selectNodeContents(el);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+    });
+  });
+
+  /* ── Expiry countdown ── */
+  var expiryIso = {{ expiry_iso | tojson }};
+  if (!expiryIso) return;
+  var expiry = new Date(expiryIso).getTime();
+  var countdownEl = document.getElementById('expiry-countdown');
+  var expiryRow   = document.getElementById('expiry-row');
+
+  function tick() {
+    var remaining = Math.floor((expiry - Date.now()) / 1000);
+    if (remaining <= 0) {
+      expiryRow.innerHTML = '<span style="color:#ff3366;"><i class="bi bi-x-circle me-1"></i>Code expired — return to login to request a new one.</span>';
+      copyBtn.disabled = true;
+      return;
+    }
+    var m = Math.floor(remaining / 60);
+    var s = remaining % 60;
+    countdownEl.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+    if (remaining <= 60) countdownEl.style.color = '#ffaa00';
+    setTimeout(tick, 1000);
+  }
+  tick();
+})();
+</script>
 </body>
 </html>

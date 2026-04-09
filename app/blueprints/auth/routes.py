@@ -87,7 +87,7 @@ def _verify_hcaptcha(token: str) -> bool:
     return verify_hcaptcha(token, secret)
 
 
-def _send_magic_link_email_sync(email: str, url_token: str, otp: str, role: str) -> None:
+def _send_magic_link_email_sync(email: str, url_token: str, role: str) -> None:
     """Synchronous fallback email send (used when Celery is unavailable)."""
     try:
         from flask_mail import Message
@@ -97,22 +97,27 @@ def _send_magic_link_email_sync(email: str, url_token: str, otp: str, role: str)
         platform_name = current_app.config.get("PLATFORM_NAME", "GhostPortal")
         expiry_min = int(current_app.config.get("MAGIC_LINK_EXPIRY_MINUTES", 15))
         verify_url = f"{base_url}/auth/verify/{url_token}"
-        otp_display = "  ".join(otp[i:i + 5] for i in range(0, len(otp), 5))
 
-        msg = Message(
-            subject=f"[{platform_name}] Your verification code — expires in {expiry_min} minutes",
-            recipients=[email],
-            html=render_template(
+        html_body = None
+        try:
+            html_body = render_template(
                 "email/magic_link.html",
                 platform_name=platform_name,
                 verify_url=verify_url,
-                otp_display=otp_display,
                 expiry_minutes=expiry_min,
-            ),
+            )
+        except Exception:
+            pass
+
+        msg = Message(
+            subject=f"[{platform_name}] Your magic link — expires in {expiry_min} minutes",
+            recipients=[email],
+            html=html_body,
             body=(
-                f"{platform_name} Verification\n\n"
-                f"Click to open verification page:\n{verify_url}\n\n"
-                f"Your verification code:\n{otp_display}\n\n"
+                f"{platform_name} — Secure Login\n\n"
+                f"Click the link below. It will show your 20-character login code.\n"
+                f"Copy the code and paste it in the tab where you requested access.\n\n"
+                f"{verify_url}\n\n"
                 f"Expires in {expiry_min} minutes. Single-use only.\n"
                 f"If you did not request this, ignore this email.\n"
             ),
@@ -145,14 +150,26 @@ def login():
 
     start = time.monotonic()
 
-    # --- Honeypot check (bots fill hidden fields) ---
-    if request.form.get("website", ""):
-        # Silent reject — look identical to success
-        constant_time_response(start)
+    platform_name = current_app.config.get("PLATFORM_NAME", "GhostPortal")
+    otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
+    expiry_minutes = int(current_app.config.get("MAGIC_LINK_EXPIRY_MINUTES", 15))
+
+    def _render_waiting(em: str, exp_iso: str) -> tuple:
+        masked = (em[0] + "***@" + em.split("@")[1]) if "@" in em else "***"
         return render_template(
             "auth/login_sent.html",
-            platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
+            platform_name=platform_name,
+            email=em,
+            masked_email=masked,
+            expiry_iso=exp_iso,
+            otp_length=otp_length,
         ), 200
+
+    # --- Honeypot check (bots fill hidden fields) ---
+    if request.form.get("website", ""):
+        dummy_expiry = _to_utc_iso(utcnow() + timedelta(minutes=expiry_minutes))
+        constant_time_response(start)
+        return _render_waiting("", dummy_expiry)
 
     # --- hCaptcha verification BEFORE any DB query ---
     hcaptcha_token = request.form.get("h-captcha-response", "")
@@ -162,16 +179,15 @@ def login():
         return render_template(
             "auth/login.html",
             hcaptcha_site_key=current_app.config.get("HCAPTCHA_SITE_KEY", ""),
-            platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
+            platform_name=platform_name,
         ), 200
 
     email = request.form.get("email", "").strip().lower()
+    dummy_expiry = _to_utc_iso(utcnow() + timedelta(minutes=expiry_minutes))
+
     if not email or "@" not in email or len(email) > 254:
         constant_time_response(start)
-        return render_template(
-            "auth/login_sent.html",
-            platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
-        ), 200
+        return _render_waiting(email, dummy_expiry)
 
     # --- Dummy work to normalize timing regardless of email existence ---
     _ = hashlib.sha3_256(secrets.token_bytes(32)).hexdigest()
@@ -179,16 +195,15 @@ def login():
     owner = User.query.filter_by(email=email).first()
     member = SecurityTeamMember.query.filter_by(email=email).first()
 
+    expiry_iso = dummy_expiry  # overwritten below if a real token is issued
+
     if owner or member:
         subject = owner if owner else member
         role = "owner" if owner else "security_team"
-        otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
-        expiry_minutes = int(current_app.config.get("MAGIC_LINK_EXPIRY_MINUTES", 15))
 
         # If a valid (non-used, non-expired) token already exists, do not
-        # overwrite it — the user has an email in flight. Silently return
-        # "check your inbox" so re-submitting the form doesn't invalidate
-        # the link that was already sent.
+        # overwrite it — user has an email in flight. Show the waiting screen
+        # so they can still enter the code from the link they already received.
         already_valid = (
             subject.login_url_token_hash
             and not subject.token_used
@@ -196,17 +211,16 @@ def login():
             and _ensure_utc(subject.token_expiry) > utcnow()
         )
         if already_valid:
+            expiry_iso = _to_utc_iso(subject.token_expiry)
             constant_time_response(start)
-            return render_template(
-                "auth/login_sent.html",
-                platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
-            ), 200
+            return _render_waiting(email, expiry_iso)
 
         url_token = generate_magic_link_token()
         otp = generate_otp(otp_length)
         url_token_hash = hash_token(url_token)
         otp_hash = hash_token(otp)
         expiry = utcnow() + timedelta(minutes=expiry_minutes)
+        expiry_iso = _to_utc_iso(expiry)
 
         try:
             subject.login_url_token_hash = url_token_hash
@@ -219,28 +233,38 @@ def login():
             db.session.rollback()
             current_app.logger.error("Token storage failed for login attempt: %s", exc)
             constant_time_response(start)
-            return render_template(
-                "auth/login_sent.html",
-                platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
-            ), 200
+            return _render_waiting(email, dummy_expiry)
+
+        # Store raw OTP in Redis so the magic link page can display it.
+        # Key: otp_raw:{url_token_hash} — TTL matches token window + 30s buffer.
+        # Raw value in Redis is acceptable: private network, short-lived, TTL-bounded.
+        try:
+            redis_client.setex(
+                f"otp_raw:{url_token_hash}",
+                expiry_minutes * 60 + 30,
+                otp,
+            )
+        except Exception as exc:
+            current_app.logger.error("Failed to cache raw OTP in Redis: %s", exc)
+            # Non-fatal — magic link page will redirect to /login with generic error
 
         # Store "remember me" preference alongside the token (expires with it)
         if request.form.get("remember_me"):
             try:
                 redis_client.setex(
                     f"login_remember:{url_token_hash}",
-                    expiry_minutes * 60 + 30,  # +30s buffer
+                    expiry_minutes * 60 + 30,
                     "1",
                 )
             except Exception:
                 pass
 
-        # Send email — prefer async Celery task, fall back to sync
+        # Send email — magic link only (OTP is shown on the verify page, not in email)
         try:
             from app.tasks.notifications import send_magic_link_email_task
-            send_magic_link_email_task.delay(email, url_token, otp, role)
+            send_magic_link_email_task.delay(email, url_token, role)
         except Exception:
-            _send_magic_link_email_sync(email, url_token, otp, role)
+            _send_magic_link_email_sync(email, url_token, role)
 
     else:
         # Unknown email — log attempt hash for monitoring, never reveal to user
@@ -250,25 +274,22 @@ def login():
         )
 
     constant_time_response(start)
-    return render_template(
-        "auth/login_sent.html",
-        platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
-    ), 200
+    return _render_waiting(email, expiry_iso)
 
 
-@auth_bp.route("/auth/verify/<raw_url_token>", methods=["GET", "POST"])
-@limiter.limit("5 per 15 minutes", methods=["POST"])
+@auth_bp.route("/auth/verify/<raw_url_token>", methods=["GET"])
+@limiter.limit("10 per 15 minutes")
 def verify_magic_link(raw_url_token: str):
     """
-    GET  — Render OTP entry page after user clicks magic link.
-    POST — Validate submitted OTP + URL token, create session.
-
-    Both secrets (url_token hash + OTP hash) must match.
-    Never reveal which part failed.
+    GET — Displays the 20-char OTP after user clicks the magic link in their email.
+    The user copies this code and pastes it into the original login tab.
+    The OTP is retrieved from Redis (stored at login time). This endpoint does NOT
+    authenticate the user — authentication happens at POST /auth/verify-code.
     """
     url_token_hash = hash_token(raw_url_token)
+    platform_name = current_app.config.get("PLATFORM_NAME", "GhostPortal")
+    otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
 
-    # Look up owner first, then security team member
     owner = User.query.filter_by(
         login_url_token_hash=url_token_hash,
         token_used=False,
@@ -282,50 +303,117 @@ def verify_magic_link(raw_url_token: str):
 
     subject = owner or member
 
-    # Validate token: exists, not used, not expired
-    # Note: if token_expiry is None (unset), treat as expired — never allow expiry-less tokens
     if not subject or not subject.token_expiry or _ensure_utc(subject.token_expiry) < utcnow():
         log_access_event(None, event_type="login_failed",
                          metadata={"reason": "invalid_or_expired_url_token"})
         flash(MSG_INVALID_LINK, "error")
         return redirect(url_for("auth.login"))
 
-    otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
-    platform_name = current_app.config.get("PLATFORM_NAME", "GhostPortal")
+    # Retrieve raw OTP from Redis
+    raw_otp: str | None = None
+    try:
+        cached = redis_client.get(f"otp_raw:{url_token_hash}")
+        if cached:
+            raw_otp = cached.decode("utf-8") if isinstance(cached, bytes) else cached
+    except Exception as exc:
+        current_app.logger.error("Redis unavailable when retrieving raw OTP: %s", exc)
 
-    if request.method == "GET":
-        return render_template(
-            "auth/verify_otp.html",
-            expiry_iso=_to_utc_iso(subject.token_expiry),
-            url_token=raw_url_token,
-            otp_length=otp_length,
-            platform_name=platform_name,
-        )
+    if not raw_otp:
+        # OTP expired from Redis (or Redis down) — user must request a new link
+        flash(MSG_INVALID_LINK, "error")
+        return redirect(url_for("auth.login"))
 
-    # -----------------------------------------------------------------------
-    # POST: OTP submission
-    # -----------------------------------------------------------------------
+    otp_display = "  ".join(raw_otp[i:i + 5] for i in range(0, len(raw_otp), 5))
+
+    return render_template(
+        "auth/verify_otp.html",
+        platform_name=platform_name,
+        raw_otp=raw_otp,
+        otp_display=otp_display,
+        otp_length=otp_length,
+        expiry_iso=_to_utc_iso(subject.token_expiry),
+    )
+
+
+@auth_bp.route("/auth/verify-code", methods=["POST"])
+@limiter.limit("5 per 15 minutes")
+def verify_code():
+    """
+    POST — Validate the OTP the user copied from the magic link page.
+    Accepts: email (hidden field) + otp (user input) + csrf_token.
+    This is the endpoint that actually authenticates and creates a session.
+    All security invariants maintained: constant-time, atomic token invalidation,
+    attempt counter, single-session enforcement, anti-enumeration.
+    """
     start = time.monotonic()
+
+    platform_name = current_app.config.get("PLATFORM_NAME", "GhostPortal")
+    otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
+    expiry_minutes = int(current_app.config.get("MAGIC_LINK_EXPIRY_MINUTES", 15))
+
+    email = request.form.get("email", "").strip().lower()
     submitted_otp = request.form.get("otp", "").strip().replace(" ", "")
 
+    if not email or "@" not in email or len(email) > 254:
+        flash(MSG_INVALID_LINK, "error")
+        constant_time_response(start)
+        return redirect(url_for("auth.login"))
+
+    masked_email = email[0] + "***@" + email.split("@")[1]
+
+    def _rerender_waiting(attempts_left=None):
+        """Re-render the OTP entry form with error already flashed."""
+        expiry_fallback = _to_utc_iso(utcnow() + timedelta(minutes=expiry_minutes))
+        subj_expiry = subject.token_expiry if subject else None
+        return render_template(
+            "auth/login_sent.html",
+            platform_name=platform_name,
+            email=email,
+            masked_email=masked_email,
+            expiry_iso=_to_utc_iso(subj_expiry) if subj_expiry else expiry_fallback,
+            otp_length=otp_length,
+            attempts_remaining=attempts_left,
+        ), 200
+
+    owner = User.query.filter_by(email=email).first()
+    member = None
+    if not owner:
+        member = SecurityTeamMember.query.filter_by(email=email).first()
+
+    subject = owner or member
+
+    # Dummy work keeps timing identical for unknown vs known emails
+    _ = hashlib.sha3_256(submitted_otp.encode()).hexdigest()
+
+    # No valid pending token — treat as invalid (generic message, same timing)
+    if (
+        not subject
+        or not subject.login_url_token_hash
+        or subject.token_used
+        or not subject.token_expiry
+        or _ensure_utc(subject.token_expiry) < utcnow()
+    ):
+        log_access_event(None, event_type="login_failed",
+                         metadata={"reason": "no_valid_pending_token", "email_prefix": email[:3]})
+        flash(MSG_INVALID_LINK, "error")
+        constant_time_response(start)
+        return _rerender_waiting()
+
+    url_token_hash = subject.login_url_token_hash
     attempt_key = f"otp_attempts:{url_token_hash}"
     MAX_ATTEMPTS = 5
 
     try:
         attempts = int(redis_client.get(attempt_key) or 0)
     except Exception:
-        # Redis unavailable — fail secure: treat as exhausted rather than allowing
-        # unlimited brute-force. The user can request a new magic link immediately.
         current_app.logger.error(
-            "verify_magic_link: Redis unavailable for OTP attempt counter — "
-            "rejecting submission to fail secure (session_id context: %s)",
-            url_token_hash[:8],
+            "verify_code: Redis unavailable for OTP attempt counter — failing secure"
         )
         flash(MSG_INVALID_LINK, "error")
         constant_time_response(start)
         return redirect(url_for("auth.login"))
 
-    # Exhausted attempts — invalidate token and force re-login
+    # Exhausted attempts — invalidate token and force full re-login
     if attempts >= MAX_ATTEMPTS:
         try:
             db.session.execute(
@@ -349,7 +437,7 @@ def verify_magic_link(raw_url_token: str):
         constant_time_response(start)
         return redirect(url_for("auth.login"))
 
-    # Constant-time OTP comparison — compare_hash_digest hashes both sides
+    # Constant-time OTP comparison
     otp_valid = compare_hash_digest(submitted_otp, subject.login_otp_hash or "")
 
     if not otp_valid:
@@ -364,24 +452,16 @@ def verify_magic_link(raw_url_token: str):
                          metadata={"reason": "invalid_otp", "attempts_remaining": remaining})
         flash(MSG_INVALID_LINK, "error")
         constant_time_response(start)
-        return render_template(
-            "auth/verify_otp.html",
-            expiry_iso=_to_utc_iso(subject.token_expiry),
-            url_token=raw_url_token,
-            otp_length=otp_length,
-            platform_name=platform_name,
-            # Show remaining count only after first failure (index > 0 = second attempt onward)
-            attempts_remaining=remaining if attempts > 0 else None,
-        )
+        # Show attempts_remaining only after the first failure
+        return _rerender_waiting(attempts_left=remaining if attempts > 0 else None)
 
     # -----------------------------------------------------------------------
-    # Authentication success — atomically mark token used, create session
+    # OTP valid — atomically mark token used, create session
     # -----------------------------------------------------------------------
     new_session_id = uuid.uuid4()
     now = utcnow()
 
     try:
-        # Atomic token invalidation — WHERE token_used=False prevents race condition
         if owner:
             result = db.session.execute(
                 sa_update(User)
@@ -408,7 +488,6 @@ def verify_magic_link(raw_url_token: str):
                 )
             )
 
-        # If rowcount is 0, another request won the race — deny
         if result.rowcount == 0:
             db.session.rollback()
             log_access_event(subject, event_type="login_failed",
@@ -417,20 +496,20 @@ def verify_magic_link(raw_url_token: str):
             constant_time_response(start)
             return redirect(url_for("auth.login"))
 
-        # Single-session enforcement: revoke previous session if exists
         enforce_single_session(subject, new_session_id)
         db.session.commit()
 
     except Exception as exc:
         db.session.rollback()
-        current_app.logger.error("Session creation failed during verify: %s", exc)
+        current_app.logger.error("Session creation failed in verify_code: %s", exc)
         flash(MSG_INVALID_LINK, "error")
         constant_time_response(start)
         return redirect(url_for("auth.login"))
 
-    # Clean up OTP attempt counter
+    # Clean up Redis keys
     try:
         redis_client.delete(attempt_key)
+        redis_client.delete(f"otp_raw:{url_token_hash}")
     except Exception:
         pass
 
@@ -441,8 +520,6 @@ def verify_magic_link(raw_url_token: str):
     except Exception:
         _remember_me = False
 
-    # Clear only the relevant role's session keys — preserves the other role's
-    # session so owner and security team can coexist in the same browser.
     if owner:
         for k in ("role", "user_id", "session_id", "last_active", "remember_me"):
             session.pop(k, None)
@@ -458,7 +535,6 @@ def verify_magic_link(raw_url_token: str):
         constant_time_response(start)
         return redirect(url_for("dashboard.index"))
     else:
-        # Verify at least one active invite exists for this member's email
         all_invites = SecurityTeamInvite.query.filter_by(
             email=member.email, is_active=True
         ).all()

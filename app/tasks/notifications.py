@@ -6,7 +6,7 @@ from app.extensions import celery, mail
 logger = logging.getLogger(__name__)
 
 @celery.task(bind=True, max_retries=3, default_retry_delay=60)
-def send_magic_link_email_task(self, email, url_token, otp, role):
+def send_magic_link_email_task(self, email, url_token, role):
     try:
         from flask_mail import Message
         from flask import current_app, render_template
@@ -14,13 +14,14 @@ def send_magic_link_email_task(self, email, url_token, otp, role):
         base_url = current_app.config.get("BASE_URL", "")
         expiry_min = current_app.config.get("MAGIC_LINK_EXPIRY_MINUTES", 15)
         verify_url = f"{base_url}/auth/verify/{url_token}"
-        otp_display = "  ".join(otp[i:i+5] for i in range(0, len(otp), 5))
 
         plain_body = (
-            f"{platform_name} Verification\n\n"
-            f"Click to open verification page:\n{verify_url}\n\n"
-            f"Your verification code:\n{otp_display}\n\n"
+            f"{platform_name} — Secure Login\n\n"
+            f"Click the link below. It will show your 20-character login code.\n"
+            f"Copy the code and paste it in the tab where you requested access.\n\n"
+            f"{verify_url}\n\n"
             f"Expires in {expiry_min} minutes. Single-use only.\n"
+            f"If you did not request this, ignore this email.\n"
         )
 
         html_body = None
@@ -29,14 +30,13 @@ def send_magic_link_email_task(self, email, url_token, otp, role):
                 "email/magic_link.html",
                 platform_name=platform_name,
                 verify_url=verify_url,
-                otp_display=otp_display,
-                expiry_min=expiry_min,
+                expiry_minutes=expiry_min,
             )
         except Exception as tmpl_exc:
             logger.warning(f"Magic link HTML template failed, falling back to plain: {tmpl_exc}")
 
         msg = Message(
-            subject=f"[{platform_name}] Your verification code — expires in {expiry_min} minutes",
+            subject=f"[{platform_name}] Your magic link — expires in {expiry_min} minutes",
             recipients=[email],
             body=plain_body,
             html=html_body,

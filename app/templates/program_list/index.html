@@ -63,13 +63,16 @@
                 <span class="badge bg-secondary">{{ p.use_count }}</span>
               </td>
               <td class="text-end pe-3">
-                <button class="btn btn-sm btn-outline-theme"
-                        onclick="openEditModal('{{ p.id }}', {{ p.name | tojson }}, {{ (p.email or '') | tojson }})"
+                <button class="btn btn-sm btn-outline-theme js-edit-program"
+                        data-id="{{ p.id }}"
+                        data-name="{{ p.name | e }}"
+                        data-email="{{ (p.email or '') | e }}"
                         title="Edit">
                   <i class="bi bi-pencil"></i>
                 </button>
-                <button class="btn btn-sm btn-outline-danger ms-1"
-                        onclick="openDeleteModal('{{ p.id }}', {{ p.name | tojson }})"
+                <button class="btn btn-sm btn-outline-danger ms-1 js-delete-program"
+                        data-id="{{ p.id }}"
+                        data-name="{{ p.name | e }}"
                         title="Delete">
                   <i class="bi bi-trash"></i>
                 </button>
@@ -246,20 +249,28 @@
 
 {% block extra_js %}
 <script>
-function openEditModal(id, name, email) {
-  const baseUrl = "{{ url_for('program_list.index') }}";
-  document.getElementById('editForm').action =
-    '/programs/list/' + id + '/edit';
-  document.getElementById('editName').value = name;
-  document.getElementById('editEmail').value = email;
-  new bootstrap.Modal(document.getElementById('editModal')).show();
-}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.js-edit-program').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id    = this.dataset.id;
+      var name  = this.dataset.name;
+      var email = this.dataset.email;
+      document.getElementById('editForm').action = '/programs/list/' + id + '/edit';
+      document.getElementById('editName').value  = name;
+      document.getElementById('editEmail').value = email;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('editModal')).show();
+    });
+  });
 
-function openDeleteModal(id, name) {
-  document.getElementById('deleteForm').action =
-    '/programs/list/' + id + '/delete';
-  document.getElementById('deleteNameDisplay').textContent = name;
-  new bootstrap.Modal(document.getElementById('deleteModal')).show();
-}
+  document.querySelectorAll('.js-delete-program').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var id   = this.dataset.id;
+      var name = this.dataset.name;
+      document.getElementById('deleteForm').action = '/programs/list/' + id + '/delete';
+      document.getElementById('deleteNameDisplay').textContent = name;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteModal')).show();
+    });
+  });
+});
 </script>
 {% endblock %}
