@@ -164,35 +164,17 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     csrf.init_app(app)
     mail.init_app(app)
 
-    # Flask-Limiter — use Redis if available, fall back to memory for local dev
+    # Flask-Limiter with Redis backend
     redis_url = app.config.get("REDIS_URL", "redis://localhost:6379/0")
-    _redis_available = False
-    try:
-        import redis as _redis_probe
-        _probe = _redis_probe.from_url(redis_url, socket_connect_timeout=1)
-        _probe.ping()
-        _redis_available = True
-    except Exception:
-        pass
-
-    if _redis_available:
-        app.config["RATELIMIT_STORAGE_URI"] = redis_url
-    else:
-        app.config["RATELIMIT_STORAGE_URI"] = "memory://"
-        app.logger.warning("Redis unavailable — rate limiter using in-memory storage")
+    limiter._storage_uri = f"redis://{redis_url.split('redis://')[-1]}"
     limiter.init_app(app)
 
     # Security headers are set by nginx in production.
     # App-managed headers (CSP, Cache-Control, X-Request-ID, Report-To, NEL)
     # are applied via the after_request hook in apply_security_headers().
 
-    # Redis client (best-effort)
-    try:
-        _ext.redis_client = init_redis(app)
-        _ext.redis_client.ping()  # confirm connection
-    except Exception:
-        _ext.redis_client = None
-        app.logger.warning("Redis unavailable — session/OTP features will use DB fallbacks")
+    # Redis client
+    _ext.redis_client = init_redis(app)
     app.redis_client = _ext.redis_client  # type: ignore[attr-defined]
 
     # Celery
@@ -258,19 +240,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     def health():
         try:
             db.session.execute(db.text("SELECT 1"))
-            db_status = "ok"
+            _ext.redis_client.ping()
+            return jsonify({"status": "ok", "db": "ok", "redis": "ok"}), 200
         except Exception as exc:
-            app.logger.error(f"Health DB check failed: {exc}")
-            return jsonify({"status": "error", "detail": "DB unavailable"}), 503
-        redis_status = "ok"
-        if _ext.redis_client:
-            try:
-                _ext.redis_client.ping()
-            except Exception:
-                redis_status = "unavailable"
-        else:
-            redis_status = "unavailable"
-        return jsonify({"status": "ok", "db": db_status, "redis": redis_status}), 200
+            app.logger.error(f"Health check failed: {exc}")
+            return jsonify({"status": "error", "detail": "Service degraded"}), 503
 
     # CSP violation reporting endpoint
     @app.route("/csp-report", methods=["POST"])
@@ -518,9 +492,9 @@ def _load_config(app: Flask) -> None:
         # Redis / Celery
         REDIS_URL=env("REDIS_URL", "redis://localhost:6379/0"),
 
-        # Rate limiting (RATELIMIT_STORAGE_URI is set later after Redis availability check)
+        # Rate limiting
         RATELIMIT_DEFAULT=env("RATELIMIT_DEFAULT", "100 per hour"),
-        RATELIMIT_STORAGE_URI="memory://",
+        RATELIMIT_STORAGE_URL=env("REDIS_URL", "redis://localhost:6379/0"),
 
         # AI — Ollama only (self-hosted); disabled by default
         AI_ENABLED=env("AI_ENABLED", "false").lower() in ("true", "1", "yes"),

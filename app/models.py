@@ -124,7 +124,6 @@ class User(db.Model):
     # Magic link + OTP (both must match — two-factor within one flow)
     login_url_token_hash = Column(String(64), nullable=True, unique=True)
     login_otp_hash = Column(String(64), nullable=True)
-    login_otp_plain = Column(String(32), nullable=True)  # Temp plaintext OTP (no-Redis fallback, cleared on use)
     token_expiry = Column(DateTime(timezone=True), nullable=True)
     token_used = Column(Boolean, default=False, nullable=False)
 
@@ -163,7 +162,6 @@ class SecurityTeamMember(db.Model):
     # Magic link + OTP
     login_url_token_hash = Column(String(64), nullable=True, unique=True)
     login_otp_hash = Column(String(64), nullable=True)
-    login_otp_plain = Column(String(32), nullable=True)  # Temp plaintext OTP (no-Redis fallback, cleared on use)
     token_expiry = Column(DateTime(timezone=True), nullable=True)
     token_used = Column(Boolean, default=False, nullable=False)
 
