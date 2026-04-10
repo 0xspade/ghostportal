@@ -82,8 +82,8 @@ def _safe_json_list(val):
 @reports_bp.route("/reports")
 @owner_required
 def list_reports():
-    severity_filter = request.args.getlist("severity")
-    status_filter = request.args.getlist("status")
+    severity_filter = [s for s in request.args.getlist("severity") if s]
+    status_filter = [s for s in request.args.getlist("status") if s]
     search = (request.args.get("q") or "").strip()
     page = max(1, int(request.args.get("page", 1) or 1))
 
