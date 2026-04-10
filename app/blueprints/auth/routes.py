@@ -246,8 +246,15 @@ def login():
                 otp,
             )
         except Exception as exc:
-            current_app.logger.error("Failed to cache raw OTP in Redis: %s", exc)
-            # Non-fatal — magic link page will redirect to /login with generic error
+            current_app.logger.error(
+                "CRITICAL: Failed to cache OTP in Redis for login attempt by %s. "
+                "The magic link email has been sent but clicking it will fail — "
+                "GET /auth/verify/<token> reads the OTP from this Redis key. "
+                "The user must request a new link once Redis is restored. Error: %s",
+                email, exc,
+            )
+            # This is effectively fatal to the current login attempt.
+            # The email is already sent; the link will redirect back to /login.
 
         # Store "remember me" preference alongside the token (expires with it)
         if request.form.get("remember_me"):
@@ -457,13 +464,22 @@ def verify_code():
         constant_time_response(start)
         return redirect(url_for("auth.login"))
 
-    # Constant-time OTP comparison
-    otp_valid = compare_hash_digest(submitted_otp, subject.login_otp_hash or "")
+    # Fast-reject malformed input before the hash comparison (defense-in-depth).
+    # compare_hash_digest would correctly fail either way, but an explicit length
+    # check avoids unnecessary hash computation on garbage input.
+    otp_valid = (
+        len(submitted_otp) == otp_length
+        and compare_hash_digest(submitted_otp, subject.login_otp_hash or "")
+    )
 
     if not otp_valid:
         try:
-            redis_client.incr(attempt_key)
-            redis_client.expire(attempt_key, 900)  # expire with token window
+            # Pipeline ensures both commands are sent atomically — if the process
+            # dies between incr and expire, the key will not persist without a TTL.
+            pipe = redis_client.pipeline()
+            pipe.incr(attempt_key)
+            pipe.expire(attempt_key, 900)  # expire with the token window (15 min)
+            pipe.execute()
         except Exception:
             pass
 
@@ -472,7 +488,8 @@ def verify_code():
                          metadata={"reason": "invalid_otp", "attempts_remaining": remaining})
         flash(MSG_INVALID_LINK, "error")
         constant_time_response(start)
-        # Show attempts_remaining only after the first failure
+        # Show attempts_remaining only after the first failure (attempts == 0 means
+        # this is their first wrong entry — likely a paste error, not worth alarming them).
         return _rerender_waiting(attempts_left=remaining if attempts > 0 else None)
 
     # -----------------------------------------------------------------------
@@ -540,6 +557,14 @@ def verify_code():
     except Exception:
         _remember_me = False
 
+    # NOTE on session regeneration (CLAUDE.md §Security):
+    # Flask's default signed-cookie sessions have no server-side session ID.
+    # The cookie IS the session data, signed by SECRET_KEY via itsdangerous.
+    # There is no session ID that an attacker could pre-set (fixate) — the cookie
+    # is unique to the data it contains and changes whenever the data changes.
+    # Classic session fixation does not apply. If Flask-Session (server-side
+    # sessions) is ever added, a proper session.regenerate() call must be
+    # inserted here before writing the new authenticated state.
     if owner:
         for k in ("role", "user_id", "session_id", "last_active", "remember_me"):
             session.pop(k, None)

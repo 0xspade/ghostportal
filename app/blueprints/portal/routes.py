@@ -114,6 +114,12 @@ def portal_setup(raw_invite_token):
         flash(MSG_INVALID_LINK, "error")
         return redirect(url_for("auth.login"))
 
+    # Lock check — must be done on POST as well as GET; invite may be locked
+    # between the user loading the setup page and submitting the form.
+    if invite.is_locked:
+        flash(MSG_INVALID_LINK, "error")
+        return redirect(url_for("auth.login"))
+
     # hCaptcha validation — required when configured OR when in production
     hcaptcha_response = request.form.get("h-captcha-response", "")
     secret_key = current_app.config.get("HCAPTCHA_SECRET_KEY", "")
@@ -140,6 +146,7 @@ def portal_setup(raw_invite_token):
 
     # OTP validation — the invite OTP was sent in the invitation email
     submitted_otp = (request.form.get("otp") or "").strip().replace(" ", "")
+    otp_length = int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20))
     attempt_key = f"otp_attempts:{token_hash}"
     MAX_OTP_ATTEMPTS = 5
     try:
@@ -162,11 +169,17 @@ def portal_setup(raw_invite_token):
         flash(MSG_INVALID_LINK, "error")
         return redirect(url_for("auth.login"))
 
-    if not invite.otp_hash or not compare_hash_digest(submitted_otp, invite.otp_hash):
+    # Fast-reject malformed OTP (wrong length) before the hash comparison.
+    if (not invite.otp_hash
+            or len(submitted_otp) != otp_length
+            or not compare_hash_digest(submitted_otp, invite.otp_hash)):
         try:
             from app.extensions import redis_client
-            redis_client.incr(attempt_key)
-            redis_client.expire(attempt_key, 15 * 60)
+            # Pipeline ensures incr + expire are sent atomically.
+            pipe = redis_client.pipeline()
+            pipe.incr(attempt_key)
+            pipe.expire(attempt_key, 15 * 60)
+            pipe.execute()
         except Exception as exc:
             current_app.logger.warning("portal_setup: could not increment OTP attempts: %s", exc)
         flash(MSG_INVALID_LINK, "error")
@@ -205,13 +218,19 @@ def portal_setup(raw_invite_token):
     if not invite.first_accessed_at:
         invite.first_accessed_at = utcnow()
 
-    # Create SecurityTeamSession record for revocation tracking
+    # Create SecurityTeamSession record for revocation tracking.
+    # expires_at mirrors PERMANENT_SESSION_LIFETIME from config so cleanup tasks
+    # and this value stay in sync when the admin changes the session lifetime.
+    _lifetime = current_app.config.get("PERMANENT_SESSION_LIFETIME", 86400)
+    _session_ttl = int(
+        _lifetime.total_seconds() if hasattr(_lifetime, "total_seconds") else _lifetime
+    )
     portal_session = SecurityTeamSession(
         id=new_session_id,
         invite_id=invite.id,
         member_id=member.id,
         session_token_hash=hash_token(str(new_session_id)),
-        expires_at=utcnow() + timedelta(hours=24),
+        expires_at=utcnow() + timedelta(seconds=_session_ttl),
         ip_address=request.remote_addr,
         user_agent=request.user_agent.string,
         last_seen=utcnow(),
@@ -228,9 +247,11 @@ def portal_setup(raw_invite_token):
     ))
     db.session.commit()
 
-    # Clear only portal namespace keys — preserve owner session if present in same browser
+    # Clear only portal namespace keys — preserve owner session if present in same browser.
+    # portal_remember_me is also cleared so stale remember-me state from a prior session
+    # is not inherited by this new session without the user explicitly opting in again.
     for k in ("portal_role", "portal_member_id", "portal_member_email",
-              "portal_session_id", "portal_last_active"):
+              "portal_session_id", "portal_last_active", "portal_remember_me"):
         session.pop(k, None)
     session["portal_role"] = "security_team"
     session["portal_member_id"] = str(member.id)

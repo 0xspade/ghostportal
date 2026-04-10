@@ -133,7 +133,7 @@ def _is_authenticated_path(path: str) -> bool:
 
 
 def _is_session_revoked(session_id: str, is_portal: bool = False) -> bool:
-    """Check Redis (fast path) with DB fallback for portal sessions."""
+    """Check Redis (fast path) with DB fallback for both portal and owner sessions."""
     try:
         from app.extensions import redis_client
         result = redis_client.get(f"revoked_session:{session_id}")
@@ -141,6 +141,7 @@ def _is_session_revoked(session_id: str, is_portal: bool = False) -> bool:
     except Exception as exc:
         logger.warning(f"Redis session revocation check failed: {exc} — trying DB fallback")
         if is_portal:
+            # Portal: SecurityTeamSession table has an explicit is_revoked column.
             try:
                 from app.models import SecurityTeamSession
                 from app.extensions import db
@@ -150,7 +151,27 @@ def _is_session_revoked(session_id: str, is_portal: bool = False) -> bool:
                 if sess is not None:
                     return bool(sess.is_revoked)
             except Exception as db_exc:
-                logger.error(f"DB fallback for session revocation also failed: {db_exc}")
+                logger.error(f"DB fallback for portal session revocation also failed: {db_exc}")
+        else:
+            # Owner: User.current_session_id holds the one active session UUID.
+            # If it no longer matches the session cookie value, this session was
+            # displaced by a newer login — treat it as revoked.
+            try:
+                from app.models import User as _User
+                from app.extensions import db as _db
+                import uuid as _uuid
+                user_id = session.get("user_id")
+                if user_id:
+                    user = _db.session.get(_User, _uuid.UUID(str(user_id)))
+                    if user and str(user.current_session_id) != str(session_id):
+                        logger.warning(
+                            "Owner session revocation detected via DB fallback: "
+                            "session_id=%s displaced by current_session_id=%s",
+                            session_id, user.current_session_id,
+                        )
+                        return True  # displaced — treat as revoked
+            except Exception as db_exc:
+                logger.error(f"DB owner session revocation fallback failed: {db_exc}")
         # Fail open — log at ERROR level so an alert can be triggered on Redis outage
         logger.error(
             "Session revocation check failed for session_id=%s (both Redis and DB unavailable) "
@@ -336,8 +357,9 @@ def enforce_single_session(user_or_member, new_session_id) -> None:
 
         # Log the displacement
         try:
+            from app.models import User as _User
             log_entry = AccessLog(
-                user_type="owner" if hasattr(user_or_member, "login_url_token_hash") else "security_team",
+                user_type="owner" if isinstance(user_or_member, _User) else "security_team",
                 user_ref=str(user_or_member.id),
                 session_id=str(old_session_id),
                 ip_address=request.remote_addr or "unknown",
