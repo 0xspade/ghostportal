@@ -1,4 +1,4 @@
-{% extends "base_email.html" %}
+{% extends "email/base_email.html" %}
 {% block subject %}[{{ platform_name }}] Follow-Up: Security Vulnerability Report — {{ report.program_name or 'Unknown' }} | Day {{ followup_day }}{% endblock %}
 {% block body %}
 <div class="platform-banner">{{ platform_name }} — Follow-Up #{{ followup_number }} of 3 (Day {{ followup_day }})</div>

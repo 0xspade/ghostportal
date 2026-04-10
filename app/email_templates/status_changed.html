@@ -1,4 +1,4 @@
-{% extends "base_email.html" %}
+{% extends "email/base_email.html" %}
 {% block subject %}[{{ platform_name }}] Status Update — {{ report.display_id }}: {{ new_status|replace('_',' ')|upper }}{% endblock %}
 {% block body %}
 <h2>Report Status Updated</h2>

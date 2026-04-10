@@ -1,4 +1,4 @@
-{% extends "base_email.html" %}
+{% extends "email/base_email.html" %}
 {% block subject %}[{{ platform_name }}] Portal Access Expiring — {{ days_remaining }} Day{{ 's' if days_remaining != 1 }} Remaining{% endblock %}
 {% block body %}
 <h2>Portal Access Expiring Soon</h2>
