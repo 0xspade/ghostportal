@@ -49,6 +49,11 @@
         <i class="bi bi-archive me-1"></i>Backup
       </a>
     </li>
+    <li class="nav-item">
+      <a class="nav-link" href="#api-section" onclick="scrollTo(this)">
+        <i class="bi bi-code-slash me-1"></i>API Key
+      </a>
+    </li>
   </ul>
 </div>
 
@@ -486,6 +491,138 @@
         </button>
       </form>
     </div>
+
+  </div>
+</div>
+
+{# ── API Key Management ────────────────────────────────────────── #}
+<div class="card mb-4" id="api-section">
+  <div class="card-arrow">
+    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+  </div>
+  <div class="card-header fw-bold">
+    <i class="bi bi-code-slash me-2 text-theme"></i>API Key Management
+  </div>
+  <div class="card-body">
+
+    <p class="text-inverse text-opacity-75 small mb-3">
+      The API key grants programmatic access to GhostPortal via
+      <code>Authorization: Bearer &lt;key&gt;</code>.
+      Scoped to: list/create reports, submit reports, list programs, security teams, templates, create templates.
+    </p>
+
+    {# Current key status #}
+    <div class="mb-4">
+      <label class="form-label fw-bold small">Current Key</label>
+      {% if api_key_info.has_key %}
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="badge bg-theme fs-6 font-monospace">
+          {{ api_key_info.preview or '(env var — no preview)' }}
+        </span>
+        {% if api_key_info.source == 'settings' %}
+        <span class="badge bg-secondary small">Generated from Settings</span>
+        {% if api_key_info.generated_at %}
+        <span class="text-inverse text-opacity-50 small">
+          Generated: {{ api_key_info.generated_at[:19].replace('T', ' ') }} UTC
+        </span>
+        {% endif %}
+        {% else %}
+        <span class="badge bg-secondary small">Set via .env API_KEY</span>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-danger">No API Key Configured</span>
+        <span class="text-inverse text-opacity-50 small">Generate one below or set API_KEY in .env</span>
+      </div>
+      {% endif %}
+    </div>
+
+    {# Generate / Rotate #}
+    <div class="d-flex gap-2 flex-wrap mb-4">
+      <form method="POST" action="{{ url_for('settings.generate_api_key') }}"
+            onsubmit="return confirm('Generate a new API key? The current key will be invalidated immediately.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-theme">
+          <i class="bi bi-arrow-clockwise me-1"></i>
+          {{ 'Rotate' if api_key_info.has_runtime_key else 'Generate' }} API Key
+        </button>
+      </form>
+      {% if api_key_info.has_runtime_key %}
+      <form method="POST" action="{{ url_for('settings.revoke_api_key') }}"
+            onsubmit="return confirm('Revoke the current API key? All API access will stop immediately.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-danger">
+          <i class="bi bi-x-circle me-1"></i>Revoke Key
+        </button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div class="alert alert-warning small mb-4">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      The raw API key is shown <strong>once</strong> upon generation. Store it securely.
+      Rotating or revoking immediately invalidates the old key.
+    </div>
+
+    {# API endpoints reference #}
+    <h6 class="fw-bold small text-inverse text-opacity-75 mb-2">Available Endpoints</h6>
+    <div class="table-responsive mb-4">
+      <table class="table table-borderless table-sm mb-0 small font-monospace">
+        <thead>
+          <tr class="text-inverse text-opacity-50">
+            <th>Method</th><th>Endpoint</th><th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>GET</td><td>/api/v1/reports</td><td class="font-sans">List reports (excl. drafts)</td></tr>
+          <tr><td>POST</td><td>/api/v1/reports</td><td class="font-sans">Create draft report</td></tr>
+          <tr><td>GET</td><td>/api/v1/reports/&lt;uuid&gt;</td><td class="font-sans">Get full report detail</td></tr>
+          <tr><td>POST</td><td>/api/v1/reports/&lt;uuid&gt;/submit</td><td class="font-sans">Submit a draft report</td></tr>
+          <tr><td>GET</td><td>/api/v1/programs</td><td class="font-sans">List program names</td></tr>
+          <tr><td>GET</td><td>/api/v1/security-teams</td><td class="font-sans">List security team invites</td></tr>
+          <tr><td>GET</td><td>/api/v1/templates</td><td class="font-sans">List report templates</td></tr>
+          <tr><td>POST</td><td>/api/v1/templates</td><td class="font-sans">Create report template</td></tr>
+          <tr><td>GET</td><td>/api/v1/stats</td><td class="font-sans">Dashboard statistics</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    {# Recent API access log #}
+    <h6 class="fw-bold small text-inverse text-opacity-75 mb-2">
+      <i class="bi bi-clock-history me-1"></i>Recent API Access
+    </h6>
+    {% if recent_api_calls %}
+    <div class="table-responsive">
+      <table class="table table-borderless table-sm mb-0 small">
+        <thead>
+          <tr class="text-inverse text-opacity-50">
+            <th>Time</th><th>Method</th><th>Path</th><th>IP</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in recent_api_calls %}
+          <tr class="{{ 'table-danger bg-opacity-10' if log.response_code and log.response_code >= 400 }}">
+            <td class="text-inverse text-opacity-50">{{ log.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td><code>{{ log.method }}</code></td>
+            <td class="font-monospace">{{ log.path }}</td>
+            <td class="font-monospace">{{ log.ip_address or '—' }}</td>
+            <td>
+              {% if log.response_code and log.response_code < 400 %}
+              <span class="badge bg-theme">{{ log.response_code }}</span>
+              {% else %}
+              <span class="badge bg-danger">{{ log.response_code or '—' }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-inverse text-opacity-50 small mb-0">No API access recorded yet.</p>
+    {% endif %}
 
   </div>
 </div>

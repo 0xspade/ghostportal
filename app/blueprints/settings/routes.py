@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Spade -- AGPL-3.0 License
 
 import json
+import secrets
 from datetime import datetime, timezone
 
 from flask import (current_app, flash, jsonify, redirect, render_template,
@@ -10,6 +11,7 @@ from flask import (current_app, flash, jsonify, redirect, render_template,
 from app.blueprints.settings import settings_bp
 from app.blueprints.decorators import owner_required
 from app.extensions import db
+from app.utils.security import hash_token
 
 
 def utcnow():
@@ -42,6 +44,24 @@ def set_system_config(key, value, value_type="str"):
     db.session.commit()
 
 
+def _get_api_key_info():
+    """Return display info about the current API key (masked preview + metadata)."""
+    # Check SystemConfig for runtime-generated key
+    preview = get_system_config("api_key_preview", None)
+    generated_at = get_system_config("api_key_generated_at", None)
+    has_runtime_key = preview is not None
+    # Fall back to env var indicator
+    env_key = current_app.config.get("API_KEY", "")
+    has_env_key = bool(env_key)
+    return {
+        "has_key": has_runtime_key or has_env_key,
+        "has_runtime_key": has_runtime_key,
+        "preview": preview,  # e.g. "abc12345..."
+        "generated_at": generated_at,
+        "source": "settings" if has_runtime_key else ("env" if has_env_key else None),
+    }
+
+
 @settings_bp.route("/settings")
 @owner_required
 def index():
@@ -56,6 +76,11 @@ def index():
                      .filter(AccessLog.event_type.in_(['login_success', 'login_failed']))
                      .order_by(AccessLog.created_at.desc())
                      .limit(30).all())
+    # Recent API access log
+    recent_api_calls = (AccessLog.query
+                        .filter_by(event_type='api_access')
+                        .order_by(AccessLog.created_at.desc())
+                        .limit(20).all())
     # CSP violations
     recent_csp = (CSPViolation.query
                   .order_by(CSPViolation.created_at.desc())
@@ -71,13 +96,17 @@ def index():
         'ai_provider': get_system_config('ai_default_provider', current_app.config.get('AI_DEFAULT_PROVIDER', 'ollama')),
     }
 
+    api_key_info = _get_api_key_info()
+
     return render_template(
         "settings/index.html",
         platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
         active_sessions=active_sessions,
         recent_logins=recent_logins,
+        recent_api_calls=recent_api_calls,
         recent_csp=recent_csp,
         config_vals=config_vals,
+        api_key_info=api_key_info,
     )
 
 
@@ -247,3 +276,38 @@ def access_log():
         event_type=event_type,
         user_type=user_type,
     )
+
+
+@settings_bp.route("/settings/api-key/generate", methods=["POST"])
+@owner_required
+def generate_api_key():
+    """Generate a new API key and store its hash in SystemConfig."""
+    raw_key = secrets.token_urlsafe(48)
+    key_hash = hash_token(raw_key)
+    # Store first 8 chars as preview for display (never store raw key)
+    preview = raw_key[:8] + "..." + raw_key[-4:]
+    generated_at = utcnow().isoformat()
+
+    set_system_config("api_key_hash", key_hash, "str")
+    set_system_config("api_key_preview", preview, "str")
+    set_system_config("api_key_generated_at", generated_at, "str")
+
+    flash(
+        f"New API key generated. Copy it now — it will NOT be shown again: {raw_key}",
+        "warning"
+    )
+    return redirect(url_for("settings.index") + "#api-section")
+
+
+@settings_bp.route("/settings/api-key/revoke", methods=["POST"])
+@owner_required
+def revoke_api_key():
+    """Revoke the current runtime API key (removes from SystemConfig)."""
+    from app.models import SystemConfig
+    for key in ("api_key_hash", "api_key_preview", "api_key_generated_at"):
+        row = SystemConfig.query.filter_by(key=key).first()
+        if row:
+            db.session.delete(row)
+    db.session.commit()
+    flash("API key revoked. The env-var API_KEY (if set) remains active.", "success")
+    return redirect(url_for("settings.index") + "#api-section")

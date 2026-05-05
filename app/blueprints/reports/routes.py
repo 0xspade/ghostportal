@@ -1313,6 +1313,7 @@ def delete_report(report_uuid):
 
     ReportReply.query.filter_by(report_id=rid).delete(synchronize_session=False)
     ReportFieldEdit.query.filter_by(report_id=rid).delete(synchronize_session=False)
+    ReportVersion.query.filter_by(report_id=rid).delete(synchronize_session=False)
     db.session.delete(report)
     db.session.commit()
 
