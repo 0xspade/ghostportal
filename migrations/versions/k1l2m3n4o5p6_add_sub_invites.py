@@ -40,8 +40,9 @@ def upgrade():
         sa.Column('invite_id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('requested_email', sa.String(254), nullable=False),
         sa.Column('note', sa.Text(), nullable=True),
-        sa.Column('status', sa.Enum('pending', 'approved', 'rejected',
-                                    name='sub_invite_status', create_type=False),
+        sa.Column('status', sa.dialects.postgresql.ENUM(
+                      'pending', 'approved', 'rejected',
+                      name='sub_invite_status', create_type=False),
                   nullable=False, server_default='pending'),
         sa.Column('approved_invite_id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False,
