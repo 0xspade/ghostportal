@@ -32,32 +32,33 @@ def upgrade():
         END $$;
     """)
 
-    # Create security_team_sub_invites table
-    op.create_table(
-        'security_team_sub_invites',
-        sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=False,
-                  server_default=sa.text('gen_random_uuid()')),
-        sa.Column('invite_id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column('requested_email', sa.String(254), nullable=False),
-        sa.Column('note', sa.Text(), nullable=True),
-        sa.Column('status', sa.dialects.postgresql.ENUM(
-                      'pending', 'approved', 'rejected',
-                      name='sub_invite_status', create_type=False),
-                  nullable=False, server_default='pending'),
-        sa.Column('approved_invite_id', sa.dialects.postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False,
-                  server_default=sa.text('now()')),
-        sa.Column('reviewed_at', sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['invite_id'], ['security_team_invites.id'],
-                                ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['approved_invite_id'], ['security_team_invites.id'],
-                                ondelete='SET NULL'),
-    )
-    op.create_index('ix_security_team_sub_invites_invite_id',
-                    'security_team_sub_invites', ['invite_id'])
-    op.create_index('ix_security_team_sub_invites_status',
-                    'security_team_sub_invites', ['status'])
+    # Create security_team_sub_invites table using raw SQL — bypasses SQLAlchemy's
+    # automatic CREATE TYPE emission which ignores create_type=False in this version.
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS security_team_sub_invites (
+            id              UUID        NOT NULL DEFAULT gen_random_uuid(),
+            invite_id       UUID        NOT NULL,
+            requested_email VARCHAR(254) NOT NULL,
+            note            TEXT,
+            status          sub_invite_status NOT NULL DEFAULT 'pending',
+            approved_invite_id UUID,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+            reviewed_at     TIMESTAMPTZ,
+            PRIMARY KEY (id),
+            FOREIGN KEY (invite_id)
+                REFERENCES security_team_invites(id) ON DELETE CASCADE,
+            FOREIGN KEY (approved_invite_id)
+                REFERENCES security_team_invites(id) ON DELETE SET NULL
+        )
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS ix_security_team_sub_invites_invite_id
+        ON security_team_sub_invites (invite_id)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS ix_security_team_sub_invites_status
+        ON security_team_sub_invites (status)
+    """)
 
 
 def downgrade():
