@@ -443,6 +443,12 @@ class SecurityTeamInvite(db.Model):
         back_populates="invite",
         cascade="all, delete-orphan",
     )
+    sub_invites = relationship(
+        "SecurityTeamSubInvite",
+        foreign_keys="SecurityTeamSubInvite.invite_id",
+        back_populates="invite",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<SecurityTeamInvite {self.email} for report {self.report_id}>"
@@ -537,6 +543,7 @@ class InviteActivity(db.Model):
             "followup_skipped", "field_edit_proposed", "field_edit_accepted",
             "field_edit_rejected", "report_edited", "retest_requested", "retest_confirmed",
             "report_reopened", "bounty_confirmed", "bonus_confirmed",
+            "sub_invite_requested", "sub_invite_approved", "sub_invite_rejected",
             name="invite_activity_action",
         ),
         nullable=False,
@@ -557,6 +564,43 @@ class InviteActivity(db.Model):
 # Attach immutability guard after class definition
 event.listen(InviteActivity, "before_update", _prevent_mutation)
 event.listen(InviteActivity, "before_delete", _prevent_mutation)
+
+
+# ---------------------------------------------------------------------------
+# SecurityTeamSubInvite
+# ---------------------------------------------------------------------------
+
+class SecurityTeamSubInvite(db.Model):
+    """
+    A request by a security team member to add a colleague to the report.
+    Must be approved by the researcher before the colleague gets access.
+    """
+    __tablename__ = "security_team_sub_invites"
+
+    id = Column(GUID(), primary_key=True, default=new_uuid)
+    invite_id = Column(GUID(), ForeignKey("security_team_invites.id", ondelete="CASCADE"),
+                       nullable=False, index=True)
+    requested_email = Column(String(254), nullable=False)
+    note = Column(Text, nullable=True)
+    status = Column(
+        Enum("pending", "approved", "rejected", name="sub_invite_status"),
+        nullable=False,
+        default="pending",
+        index=True,
+    )
+    # UUID of the SecurityTeamInvite created when this sub-invite is approved
+    approved_invite_id = Column(GUID(), ForeignKey("security_team_invites.id", ondelete="SET NULL"),
+                                nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Relationships
+    invite = relationship("SecurityTeamInvite", foreign_keys=[invite_id],
+                          back_populates="sub_invites")
+    approved_invite = relationship("SecurityTeamInvite", foreign_keys=[approved_invite_id])
+
+    def __repr__(self) -> str:
+        return f"<SecurityTeamSubInvite {self.requested_email} status={self.status}>"
 
 
 # ---------------------------------------------------------------------------

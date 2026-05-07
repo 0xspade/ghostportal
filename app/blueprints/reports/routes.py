@@ -16,7 +16,7 @@ from app.models import (Report, ReportAttachment, ReportVersion, SecurityTeamInv
                         SecurityTeamMember, InviteActivity, ReportReply,
                         ReportFieldEdit, ExternalLink, FollowUpSchedule,
                         Notification, ProgramName, ReportTemplate, BountyPayment,
-                        SecurityTeamSession)
+                        SecurityTeamSession, SecurityTeamSubInvite)
 from app.utils.security import generate_otp, hash_token
 from app.utils.display_id import generate_display_id
 from app.utils.markdown_renderer import sanitize_markdown, render_markdown
@@ -362,6 +362,7 @@ def view_report(report_uuid):
         "reply_posted", "invite_sent", "link_clicked", "setup_complete",
         "account_locked", "account_unlocked", "field_edit_proposed",
         "bounty_confirmed", "bonus_confirmed",
+        "followup_30_sent", "followup_60_sent", "followup_90_sent", "followup_skipped",
     }
     all_activity = []
     if invite_ids:
@@ -449,6 +450,13 @@ def view_report(report_uuid):
                 if not has_conf or has_req.performed_at > has_conf.performed_at:
                     retest_pending_invites.append(inv)
 
+    # Pending sub-invite requests across all invites for this report
+    pending_sub_invites = (SecurityTeamSubInvite.query
+                           .filter(SecurityTeamSubInvite.invite_id.in_(invite_ids),
+                                   SecurityTeamSubInvite.status == "pending")
+                           .order_by(SecurityTeamSubInvite.created_at.asc())
+                           .all()) if invite_ids else []
+
     log_access_event(None, "report_viewed",
                      metadata={"report_id": str(rid), "display_id": report.display_id})
     return render_template(
@@ -463,6 +471,7 @@ def view_report(report_uuid):
         rendered=rendered,
         payments=payments,
         retest_pending_invites=retest_pending_invites,
+        pending_sub_invites=pending_sub_invites,
         now=now,
         platform_name=current_app.config.get("PLATFORM_NAME", "GhostPortal"),
     )
@@ -709,6 +718,14 @@ def quick_action(report_uuid):
             ))
         db.session.commit()
         flash("Status updated.", "success")
+
+        # Notify security team members when researcher marks report as not_applicable
+        if action == "not_applicable":
+            try:
+                from app.tasks.notifications import notify_security_team
+                notify_security_team.delay(event="status_changed", report_id=str(rid))
+            except Exception as exc:
+                current_app.logger.warning("notify_security_team failed for not_applicable: %s", exc)
 
     elif action == "set_bounty":
         try:
@@ -958,6 +975,107 @@ def reject_field_edit(report_uuid, edit_uuid):
     edit.reviewed_at = utcnow()
     db.session.commit()
     flash("Field edit proposal rejected.", "success")
+    return redirect(url_for("reports.view_report", report_uuid=report_uuid))
+
+
+# ── Sub-Invite Approve / Reject ────────────────────────────────────────────────
+@reports_bp.route("/reports/<report_uuid>/sub-invite/<sub_uuid>/approve", methods=["POST"])
+@owner_required
+def approve_sub_invite(report_uuid, sub_uuid):
+    """Researcher approves a colleague sub-invite request — generates a new invite."""
+    rid = parse_uuid(report_uuid)
+    report = Report.query.get_or_404(rid)
+    sid = parse_uuid(sub_uuid)
+    sub = SecurityTeamSubInvite.query.filter_by(id=sid, status="pending").first_or_404()
+
+    # The parent invite must belong to this report
+    parent_invite = SecurityTeamInvite.query.filter_by(
+        id=sub.invite_id, report_id=rid
+    ).first_or_404()
+
+    # Guard: colleague may already have an active invite (race between request and approval)
+    existing_invite = SecurityTeamInvite.query.filter_by(
+        report_id=rid, email=sub.requested_email, is_active=True
+    ).first()
+    if existing_invite:
+        sub.status = "rejected"
+        sub.reviewed_at = utcnow()
+        db.session.commit()
+        flash(f"{sub.requested_email} already has an active invite for this report.", "warning")
+        return redirect(url_for("reports.view_report", report_uuid=report_uuid))
+
+    # Generate new invite for the colleague — reuse the same send-invite logic
+    import secrets as _secrets
+    from app.utils.security import hash_token as _hash_token, generate_otp
+    raw_token = _secrets.token_urlsafe(48)
+    raw_otp = generate_otp(int(current_app.config.get("MAGIC_LINK_OTP_LENGTH", 20)))
+    expiry_days = int(current_app.config.get("INVITE_EXPIRY_DAYS", 90))
+    from datetime import timedelta
+    new_invite = SecurityTeamInvite(
+        report_id=rid,
+        email=sub.requested_email,
+        company_name=parent_invite.company_name,
+        token_hash=_hash_token(raw_token),
+        otp_hash=_hash_token(raw_otp),
+        token_created_at=utcnow(),
+        expires_at=utcnow() + timedelta(days=expiry_days),
+    )
+    db.session.add(new_invite)
+    db.session.flush()
+
+    sub.status = "approved"
+    sub.approved_invite_id = new_invite.id
+    sub.reviewed_at = utcnow()
+
+    db.session.add(InviteActivity(
+        invite_id=parent_invite.id,
+        action="sub_invite_approved",
+        ip_address=request.remote_addr,
+        metadata_={"approved_email": sub.requested_email,
+                   "new_invite_id": str(new_invite.id)},
+    ))
+    db.session.commit()
+
+    # Send invite email to the colleague
+    try:
+        from app.tasks.notifications import send_invite_email
+        send_invite_email.delay(
+            str(new_invite.id),
+            raw_token,
+            raw_otp,
+        )
+    except Exception as exc:
+        current_app.logger.warning("send_invite_email failed for sub-invite: %s", exc)
+
+    flash(f"Sub-invite approved. Invite sent to {sub.requested_email}.", "success")
+    return redirect(url_for("reports.view_report", report_uuid=report_uuid))
+
+
+@reports_bp.route("/reports/<report_uuid>/sub-invite/<sub_uuid>/reject", methods=["POST"])
+@owner_required
+def reject_sub_invite(report_uuid, sub_uuid):
+    """Researcher rejects a colleague sub-invite request."""
+    rid = parse_uuid(report_uuid)
+    Report.query.get_or_404(rid)
+    sid = parse_uuid(sub_uuid)
+    sub = SecurityTeamSubInvite.query.filter_by(id=sid, status="pending").first_or_404()
+
+    parent_invite = SecurityTeamInvite.query.filter_by(
+        id=sub.invite_id, report_id=rid
+    ).first_or_404()
+
+    sub.status = "rejected"
+    sub.reviewed_at = utcnow()
+
+    db.session.add(InviteActivity(
+        invite_id=parent_invite.id,
+        action="sub_invite_rejected",
+        ip_address=request.remote_addr,
+        metadata_={"rejected_email": sub.requested_email},
+    ))
+    db.session.commit()
+
+    flash(f"Sub-invite for {sub.requested_email} rejected.", "success")
     return redirect(url_for("reports.view_report", report_uuid=report_uuid))
 
 

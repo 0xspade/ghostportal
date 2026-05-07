@@ -167,9 +167,53 @@ All endpoints require `Authorization: Bearer <key>`. Generate or rotate your API
 
 Rate limits: 100 req/hr for GET, 20 req/hr for POST. All responses include `X-Request-ID`.
 
-**Example:**
+**Examples:**
+
+List reports:
 ```bash
 curl -H "Authorization: Bearer <key>" https://yourdomain.com/api/v1/reports
+```
+
+Create a draft report:
+```bash
+curl -X POST https://yourdomain.com/api/v1/reports \
+  -H "Authorization: Bearer <key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Reflected XSS in search parameter",
+    "severity": "high",
+    "description": "The `q` parameter on `/search` reflects unsanitized input into the DOM.",
+    "steps_to_reproduce": "1. Navigate to /search?q=<script>alert(1)</script>\n2. Observe alert fires.",
+    "impact_statement": "Allows arbitrary JavaScript execution in victim browsers.",
+    "target_asset": "https://example.com/search",
+    "program_name": "Example Corp",
+    "tags": ["XSS", "Web App"]
+  }'
+```
+
+Submit a draft report (moves status from `draft` → `submitted`):
+```bash
+curl -X POST https://yourdomain.com/api/v1/reports/<uuid>/submit \
+  -H "Authorization: Bearer <key>"
+```
+
+Create a report template:
+```bash
+curl -X POST https://yourdomain.com/api/v1/templates \
+  -H "Authorization: Bearer <key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Stored XSS via Comment Field",
+    "category": "web",
+    "severity": "high",
+    "cwe_id": 79,
+    "cwe_name": "Improper Neutralization of Input During Web Page Generation",
+    "title_template": "Stored XSS in [field] on [endpoint]",
+    "description_template": "A stored cross-site scripting vulnerability exists in the [field] parameter.",
+    "steps_template": "1. Navigate to [endpoint]\n2. Submit payload: <script>alert(document.cookie)</script>\n3. Observe execution on page load.",
+    "remediation_template": "Encode all user-supplied output using context-appropriate escaping.",
+    "tags": ["XSS", "Stored", "Web App"]
+  }'
 ```
 
 ---

@@ -40,11 +40,6 @@
       </a>
     </li>
     <li class="nav-item">
-      <a class="nav-link" href="#csp-section" onclick="scrollTo(this)">
-        <i class="bi bi-file-earmark-text me-1"></i>CSP Log
-      </a>
-    </li>
-    <li class="nav-item">
       <a class="nav-link" href="#backup-section" onclick="scrollTo(this)">
         <i class="bi bi-archive me-1"></i>Backup
       </a>
@@ -396,55 +391,6 @@
   </div>
 </div>
 
-{# ── CSP Violation Log ─────────────────────────────────────────── #}
-<div class="card mb-4" id="csp-section">
-  <div class="card-arrow">
-    <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
-    <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
-  </div>
-  <div class="card-header fw-bold d-flex align-items-center">
-    <span><i class="bi bi-file-earmark-text me-2 text-theme"></i>CSP Violation Log</span>
-    {% if recent_csp %}
-    <form method="POST" action="{{ url_for('settings.clear_csp_log') }}" class="ms-auto"
-          onsubmit="return confirm('Clear all CSP violation logs?')">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-danger btn-sm">
-        <i class="bi bi-trash me-1"></i>Clear Log
-      </button>
-    </form>
-    {% endif %}
-  </div>
-  <div class="card-body">
-    {% if recent_csp %}
-    <div class="table-responsive">
-      <table class="table table-borderless table-sm mb-0">
-        <thead>
-          <tr class="text-inverse text-opacity-50 small">
-            <th>Time</th><th>Blocked URI</th><th>Directive</th><th>Document URI</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for v in recent_csp %}
-          <tr>
-            <td class="small text-inverse text-opacity-50">
-              {{ v.created_at.strftime('%Y-%m-%d %H:%M') if v.created_at }}
-            </td>
-            <td class="small font-monospace text-break">{{ (v.blocked_uri or '—')|truncate(50) }}</td>
-            <td class="small"><code>{{ v.violated_directive or '—' }}</code></td>
-            <td class="small text-inverse text-opacity-50 text-break">
-              {{ (v.document_uri or '—')|truncate(60) }}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="text-inverse text-opacity-50 small mb-0">No CSP violations recorded.</p>
-    {% endif %}
-  </div>
-</div>
-
 {# ── Backup & Restore ──────────────────────────────────────────── #}
 <div class="card mb-4" id="backup-section">
   <div class="card-arrow">
@@ -595,7 +541,7 @@
     </h6>
     {% if recent_api_calls %}
     <div class="table-responsive">
-      <table class="table table-borderless table-sm mb-0 small">
+      <table id="api-access-table" class="table table-borderless table-sm mb-0 small" style="width:100%">
         <thead>
           <tr class="text-inverse text-opacity-50">
             <th>Time</th><th>Method</th><th>Path</th><th>IP</th><th>Status</th>
@@ -672,9 +618,9 @@ function scrollTo(el) {
 <script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap5.min.js" crossorigin="anonymous"></script>
 <script>
 $(document).ready(function() {
-  var tbl = document.getElementById('login-attempts-table');
-  if (tbl) {
-    $(tbl).DataTable({
+  var loginTbl = document.getElementById('login-attempts-table');
+  if (loginTbl) {
+    $(loginTbl).DataTable({
       order: [[0, 'desc']],
       pageLength: 15,
       lengthMenu: [10, 15, 25, 50],
@@ -685,6 +631,18 @@ $(document).ready(function() {
       columnDefs: [
         { orderable: false, targets: [4] }
       ]
+    });
+  }
+  var apiTbl = document.getElementById('api-access-table');
+  if (apiTbl) {
+    $(apiTbl).DataTable({
+      order: [[0, 'desc']],
+      pageLength: 15,
+      lengthMenu: [10, 15, 25, 50],
+      language: {
+        search: 'Filter:',
+        emptyTable: 'No API access recorded yet.'
+      }
     });
   }
 });

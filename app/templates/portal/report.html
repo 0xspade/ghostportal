@@ -4,7 +4,8 @@
 {% block extra_css %}
 <style>
 /* Ensure modals render above HUD admin loading overlays (Pace.js ~2000) */
-#editModal     { z-index: 9050 !important; }
+#editModal      { z-index: 9050 !important; }
+#subInviteModal { z-index: 9050 !important; }
 #ext-link-modal { z-index: 9050 !important; }
 .modal-backdrop { z-index: 9040 !important; }
 
@@ -413,6 +414,10 @@
             'followup_30_sent': ('envelope','secondary'),
             'followup_60_sent': ('envelope','secondary'),
             'followup_90_sent': ('envelope','secondary'),
+            'followup_skipped': ('dash-circle','secondary'),
+            'sub_invite_requested': ('person-plus','info'),
+            'sub_invite_approved': ('person-check','theme'),
+            'sub_invite_rejected': ('person-x','danger'),
           } %}
           {% set icon_info = icon_map.get(evt.action, ('circle','secondary')) %}
           <div class="d-flex gap-2 mb-3 position-relative activity-entry">
@@ -447,7 +452,13 @@
                 {% elif evt.action == 'status_changed' %}Status changed{% if evt.metadata_ and evt.metadata_.get('new_status') %} → <span class="badge bg-secondary" style="font-size:0.6rem;">{{ evt.metadata_['new_status']|upper }}</span>{% endif %}
                 {% elif evt.action == 'account_locked' %}Access locked
                 {% elif evt.action == 'account_unlocked' %}Access restored
-                {% elif evt.action in ('followup_30_sent','followup_60_sent','followup_90_sent') %}Follow-up email sent
+                {% elif evt.action == 'followup_30_sent' %}30-day follow-up sent to you
+                {% elif evt.action == 'followup_60_sent' %}60-day follow-up sent to you
+                {% elif evt.action == 'followup_90_sent' %}90-day follow-up sent to you
+                {% elif evt.action == 'followup_skipped' %}Follow-up skipped — already replied
+                {% elif evt.action == 'sub_invite_requested' %}Colleague access requested{% if evt.metadata_ and evt.metadata_.get('requested_email') %}: <span class="text-info">{{ evt.metadata_['requested_email'] }}</span>{% endif %}
+                {% elif evt.action == 'sub_invite_approved' %}Colleague access approved{% if evt.metadata_ and evt.metadata_.get('approved_email') %}: <span class="text-theme">{{ evt.metadata_['approved_email'] }}</span>{% endif %}
+                {% elif evt.action == 'sub_invite_rejected' %}Colleague access request rejected
                 {% else %}{{ evt.action | replace('_',' ') | title }}
                 {% endif %}
               </div>
@@ -709,12 +720,26 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         {# Action selector — above the textarea #}
+        {# _portal_resolved: report closed as resolved → can still set bounty/retest + reopen #}
+        {# _portal_closed:   report closed any other way → can only reopen #}
         <div class="mb-2">
-          {% set _portal_closed = report.status in ['duplicate', 'informative', 'resolved', 'wont_fix'] %}
+          {% set _portal_resolved = report.status == 'resolved' %}
+          {% set _portal_closed = report.status in ['duplicate', 'informative', 'wont_fix', 'not_applicable'] %}
           <select name="action" class="form-select form-select-sm" id="compose-action">
             <option value="">— No Change —</option>
             {% if _portal_closed %}
             <option value="reopen">Reopen — reactivate this report for further discussion</option>
+            {% elif _portal_resolved %}
+            <option value="reopen">Reopen — reactivate this report for further discussion</option>
+            <option value="request_retest">Retest — ask researcher to verify the fix</option>
+            {% if not payment %}
+            <option value="set_bounty">Set Bounty — issue a reward to the researcher</option>
+            {% elif payment.status == 'pending' %}
+            <option value="edit_bounty">Edit Bounty — adjust the reward amount</option>
+            {% endif %}
+            {% if retest_confirmed_exists %}
+            <option value="set_bonus">Bonus — additional reward after retest confirmed</option>
+            {% endif %}
             {% else %}
             <option value="triaged" {% if report.status == 'triaged' %}selected{% endif %}>Triaged — confirmed &amp; queued for fix</option>
             <option value="duplicate">Duplicate — already reported internally</option>
@@ -835,10 +860,59 @@
           <i class="bi bi-send me-1"></i>Post Reply
         </button>
       </form>
+
+      <div class="mt-3 pt-3 border-top border-inverse border-opacity-10">
+        <button class="btn btn-sm btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#subInviteModal">
+          <i class="bi bi-person-plus me-1"></i>Request Colleague Access
+        </button>
+      </div>
     </div>
 
   </div>
 </div>{# end discussion card #}
+
+
+{# ════ Sub-Invite (Colleague Access) Modal ════ #}
+<div class="modal fade" id="subInviteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">
+          <i class="bi bi-person-plus me-2 text-theme"></i>Request Colleague Access
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="POST" action="{{ url_for('portal.request_sub_invite', invite_uuid=invite.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-body">
+          <div class="alert alert-info small py-2 mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Your request will be reviewed by the researcher. Your colleague will receive
+            an invite link once approved.
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small">Colleague Email <span class="text-danger">*</span></label>
+            <input type="email" name="colleague_email" class="form-control" required
+                   placeholder="colleague@yourcompany.com">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold small">
+              Note <span class="text-inverse text-opacity-50">(optional)</span>
+            </label>
+            <textarea name="note" class="form-control" rows="2"
+                      placeholder="Reason for adding this colleague..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-theme">
+            <i class="bi bi-send me-1"></i>Send Request
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 
 {# ════ Field Edit Proposal Modal ════ #}

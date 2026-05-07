@@ -123,7 +123,7 @@
             <div class="d-flex flex-wrap gap-2">
               {% for sev in ['critical','high','medium','low','informational'] %}
               <div class="form-check form-check-inline">
-                <input class="form-check-input sev-radio" type="radio" value="{{ sev }}" id="sev-{{ sev }}"
+                <input class="form-check-input sev-radio" type="radio" name="severity_radio" value="{{ sev }}" id="sev-{{ sev }}"
                        {{ 'checked' if (prefill or {}).get('severity') == sev }}>
                 <label class="form-check-label" for="sev-{{ sev }}">
                   {% if sev == 'critical' %}<span class="badge bg-danger">CRITICAL</span>

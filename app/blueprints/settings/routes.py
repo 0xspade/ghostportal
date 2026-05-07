@@ -65,26 +65,30 @@ def _get_api_key_info():
 @settings_bp.route("/settings")
 @owner_required
 def index():
-    from app.models import SecurityTeamSession, AccessLog, CSPViolation
+    from app.models import SecurityTeamSession, AccessLog
     # Active portal sessions
     active_sessions = (SecurityTeamSession.query
                        .filter_by(is_revoked=False)
                        .order_by(SecurityTeamSession.last_seen.desc())
                        .limit(20).all())
-    # Recent login attempts
+    # Recent login attempts — exclude bots
     recent_logins = (AccessLog.query
-                     .filter(AccessLog.event_type.in_(['login_success', 'login_failed']))
+                     .filter(
+                         AccessLog.event_type.in_(['login_success', 'login_failed']),
+                         db.or_(AccessLog.ua_is_bot == False, AccessLog.ua_is_bot.is_(None))
+                     )
                      .order_by(AccessLog.created_at.desc())
-                     .limit(30).all())
-    # Recent API access log
+                     .limit(50).all())
+    # Recent API access log — only successful (valid key) calls
     recent_api_calls = (AccessLog.query
                         .filter_by(event_type='api_access')
+                        .filter(
+                            AccessLog.response_code.isnot(None),
+                            AccessLog.response_code < 400,
+                        )
                         .order_by(AccessLog.created_at.desc())
-                        .limit(20).all())
-    # CSP violations
-    recent_csp = (CSPViolation.query
-                  .order_by(CSPViolation.created_at.desc())
-                  .limit(100).all()) if hasattr(CSPViolation, '__table__') else []
+                        .limit(50).all())
+    recent_csp = []
 
     config_vals = {
         'idle_timeout': get_system_config('idle_timeout_seconds', current_app.config.get('IDLE_TIMEOUT_SECONDS', 300)),

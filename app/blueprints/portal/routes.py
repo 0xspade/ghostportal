@@ -15,7 +15,7 @@ from app.extensions import db, limiter, csrf
 from app.models import (SecurityTeamInvite, SecurityTeamMember,
                         SecurityTeamSession, InviteActivity, ReportReply,
                         ReportFieldEdit, BountyPayment, ReportAttachment,
-                        AccessLog)
+                        AccessLog, SecurityTeamSubInvite)
 from app.utils.security import hash_token, compare_hash_digest, verify_hcaptcha
 from app.utils.auth_messages import MSG_INVALID_LINK, MSG_ACCOUNT_ISSUE
 from app.utils.markdown_renderer import sanitize_markdown, render_markdown
@@ -339,6 +339,10 @@ def view_report(invite_uuid):
         "field_edit_accepted": ("check-circle", "Field correction accepted"),
         "field_edit_rejected": ("x-circle", "Field correction rejected"),
         "field_edit_proposed": ("pencil-square", "Correction proposed"),
+        "followup_30_sent": ("envelope", "30-day follow-up sent"),
+        "followup_60_sent": ("envelope", "60-day follow-up sent"),
+        "followup_90_sent": ("envelope", "90-day follow-up sent"),
+        "followup_skipped": ("dash-circle", "Follow-up skipped (already replied)"),
     }
     thread_items = []
     for r in replies:
@@ -449,7 +453,9 @@ def view_report(invite_uuid):
     if invite.all_resolved_at:
         resolved_expiry_at = invite.all_resolved_at + timedelta(days=resolved_expiry_days)
 
-    # Update last activity
+    # Update last activity; record first_accessed_at for returning members (dashboard entry)
+    if invite.first_accessed_at is None:
+        invite.first_accessed_at = utcnow()
     invite.last_activity_at = utcnow()
     db.session.commit()
 
@@ -581,7 +587,7 @@ def compose(invite_uuid):
     errors = []
 
     _VALID_STATUSES = {"triaged", "duplicate", "informative", "resolved", "wont_fix"}
-    _CLOSED_STATUSES = {"duplicate", "informative", "resolved", "wont_fix"}
+    _CLOSED_STATUSES = {"duplicate", "informative", "resolved", "wont_fix", "not_applicable"}
 
     # ── Status change ──────────────────────────────────────────────────────────
     if action in _VALID_STATUSES:
@@ -1141,6 +1147,74 @@ def submit_field_edit(invite_uuid):
         current_app.logger.warning("notify_owner failed for field_edit_proposed: %s", exc)
 
     flash("Field correction proposal submitted for researcher review.", "success")
+    return redirect(url_for("portal.view_report", invite_uuid=invite_uuid))
+
+
+# ── Portal Sub-Invite Request ─────────────────────────────────────────────────
+@portal_bp.route("/portal/report/<invite_uuid>/sub-invite", methods=["POST"])
+@security_team_required
+@limiter.limit("5 per hour")
+def request_sub_invite(invite_uuid):
+    """Security team member requests to add a colleague to this report."""
+    member = _get_current_member()
+    result = _get_scoped_invite(invite_uuid, member)
+    if not isinstance(result, SecurityTeamInvite):
+        return result
+    invite = result
+
+    requested_email = (request.form.get("colleague_email") or "").strip().lower()[:254]
+    note = (request.form.get("note") or "").strip()[:500]
+
+    if not requested_email or "@" not in requested_email:
+        flash("A valid email address is required.", "error")
+        return redirect(url_for("portal.view_report", invite_uuid=invite_uuid))
+
+    if requested_email == invite.email.lower():
+        flash("You cannot request access for your own email.", "warning")
+        return redirect(url_for("portal.view_report", invite_uuid=invite_uuid))
+
+    # Prevent requesting access for an email already invited to this report
+    already_invited = SecurityTeamInvite.query.filter_by(
+        report_id=invite.report_id, email=requested_email, is_active=True
+    ).first()
+    if already_invited:
+        flash("That email already has access to this report.", "warning")
+        return redirect(url_for("portal.view_report", invite_uuid=invite_uuid))
+
+    # Prevent duplicate pending requests
+    existing_pending = SecurityTeamSubInvite.query.filter_by(
+        invite_id=invite.id, requested_email=requested_email, status="pending"
+    ).first()
+    if existing_pending:
+        flash("A pending request for that email already exists.", "warning")
+        return redirect(url_for("portal.view_report", invite_uuid=invite_uuid))
+
+    sub = SecurityTeamSubInvite(
+        invite_id=invite.id,
+        requested_email=requested_email,
+        note=note,
+        status="pending",
+    )
+    db.session.add(sub)
+    db.session.add(InviteActivity(
+        invite_id=invite.id,
+        action="sub_invite_requested",
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string,
+        metadata_={"requested_email": requested_email,
+                   "requested_by": invite.company_name or "Security Team"},
+    ))
+    invite.last_activity_at = utcnow()
+    db.session.commit()
+
+    try:
+        from app.tasks.notifications import notify_owner
+        notify_owner.delay(event="sub_invite_requested", invite_id=str(invite.id),
+                           report_id=str(invite.report_id))
+    except Exception as exc:
+        current_app.logger.warning("notify_owner failed for sub_invite_requested: %s", exc)
+
+    flash(f"Request to add {requested_email} has been sent to the researcher for approval.", "success")
     return redirect(url_for("portal.view_report", invite_uuid=invite_uuid))
 
 

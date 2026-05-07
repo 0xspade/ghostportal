@@ -93,6 +93,16 @@
 </div>
 {% endif %}
 
+{# ── Pending sub-invite requests alert ── #}
+{% if pending_sub_invites %}
+<div class="alert alert-info alert-dismissible fade show mb-3" role="alert">
+  <i class="bi bi-person-plus me-2"></i>
+  <strong>{{ pending_sub_invites|length }} pending colleague access request{{ 's' if pending_sub_invites|length != 1 }}</strong>
+  — <a href="#sub-invites-section" class="alert-link">Review below</a>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
 {# ── Two-column layout ── #}
 <div class="row g-3 mb-3">
 
@@ -283,6 +293,59 @@
     {% endif %}
     {% endif %}
 
+    {# ── Sub-Invite Requests (owner review) ── #}
+    {% if pending_sub_invites %}
+    <div class="card mb-3" id="sub-invites-section">
+      <div class="card-arrow">
+        <div class="card-arrow-top-left"></div><div class="card-arrow-top-right"></div>
+        <div class="card-arrow-bottom-left"></div><div class="card-arrow-bottom-right"></div>
+      </div>
+      <div class="card-header fw-bold text-info">
+        <i class="bi bi-person-plus me-2"></i>Colleague Access Requests
+        <span class="badge bg-info text-dark ms-2">{{ pending_sub_invites|length }}</span>
+      </div>
+      <div class="card-body">
+        {% for sub in pending_sub_invites %}
+        <div class="card bg-inverse bg-opacity-5 border-0 mb-3">
+          <div class="card-body">
+            <div class="text-inverse text-opacity-50 small mb-2">
+              Requested by
+              <strong>{{ sub.invite.company_name if sub.invite else 'Security Team' }}</strong>
+              on {{ sub.created_at.strftime('%Y-%m-%d') }}
+            </div>
+            <div class="mb-2 small">
+              Colleague: <code class="text-theme">{{ sub.requested_email }}</code>
+            </div>
+            {% if sub.note %}
+            <div class="text-inverse text-opacity-75 small mb-3">
+              <strong>Note:</strong> {{ sub.note }}
+            </div>
+            {% endif %}
+            <div class="d-flex gap-2">
+              <form method="POST"
+                    action="{{ url_for('reports.approve_sub_invite', report_uuid=report.id, sub_uuid=sub.id) }}"
+                    class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-theme btn-sm">
+                  <i class="bi bi-check me-1"></i>Approve &amp; Send Invite
+                </button>
+              </form>
+              <form method="POST"
+                    action="{{ url_for('reports.reject_sub_invite', report_uuid=report.id, sub_uuid=sub.id) }}"
+                    class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-danger btn-sm">
+                  <i class="bi bi-x me-1"></i>Reject
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     {# ── Field Edit Proposals (owner review) ── #}
     {% if pending_edits %}
     <div class="card mb-3" id="field-edits-section">
@@ -369,7 +432,7 @@
           {% for att in attachments %}
           {% set is_image = att.mime_type and att.mime_type.startswith('image/') %}
           <div class="d-flex align-items-center gap-2 px-2 py-1 rounded bg-inverse bg-opacity-5">
-            <i class="bi bi-{% if is_image %}image{% elif 'pdf' in att.mime_type %}file-pdf{% elif 'video' in att.mime_type %}camera-video{% else %}file-earmark{% endif %} text-theme flex-shrink-0"></i>
+            <i class="bi bi-{% if is_image %}image{% elif att.mime_type and 'pdf' in att.mime_type %}file-pdf{% elif att.mime_type and 'video' in att.mime_type %}camera-video{% else %}file-earmark{% endif %} text-theme flex-shrink-0"></i>
             <span class="small text-inverse flex-1 text-truncate" title="{{ att.filename_original }}" style="max-width:120px;">{{ att.filename_original }}</span>
             <span class="text-inverse text-opacity-50" style="font-size:0.65rem;white-space:nowrap;">{{ (att.file_size / 1024)|round(1) }}KB</span>
             <div class="d-flex gap-1 flex-shrink-0">
@@ -721,6 +784,10 @@
             'account_unlocked': ('unlock','theme'),
             'bounty_confirmed': ('check-circle-fill','theme'),
             'bonus_confirmed': ('check-circle-fill','info'),
+            'followup_30_sent': ('envelope','secondary'),
+            'followup_60_sent': ('envelope','secondary'),
+            'followup_90_sent': ('envelope','secondary'),
+            'followup_skipped': ('dash-circle','secondary'),
           } %}
           {% set _act_ii = _act_icon_map.get(evt.action, ('circle','secondary')) %}
           <div class="d-flex gap-2 mb-3 position-relative">
@@ -755,6 +822,10 @@
                 {% elif evt.action == 'account_unlocked' %}Access restored
                 {% elif evt.action == 'bounty_confirmed' %}<span class="text-theme fw-bold">Bounty receipt confirmed</span>{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-theme">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
                 {% elif evt.action == 'bonus_confirmed' %}<span class="text-info fw-bold">Bonus receipt confirmed</span>{% if evt.metadata_ and evt.metadata_.get('amount') %} — <span class="text-info">{{ evt.metadata_['amount'] }} {{ evt.metadata_.get('currency','') }}</span>{% endif %}
+                {% elif evt.action == 'followup_30_sent' %}<span class="text-inverse text-opacity-50">30-day follow-up sent to security team</span>
+                {% elif evt.action == 'followup_60_sent' %}<span class="text-inverse text-opacity-50">60-day follow-up sent to security team</span>
+                {% elif evt.action == 'followup_90_sent' %}<span class="text-inverse text-opacity-50">90-day follow-up sent to security team</span>
+                {% elif evt.action == 'followup_skipped' %}<span class="text-inverse text-opacity-50">Follow-up skipped — security team already replied</span>
                 {% else %}{{ evt.action | replace('_',' ') | title }}{% endif %}
               </div>
               {% set _act_inv = namespace(name=None) %}
@@ -842,7 +913,7 @@
         </div>
         <div class="d-flex flex-wrap gap-1">
           {% for att in attachments %}
-          {% set _is_img = att.mime_type.startswith('image/') %}
+          {% set _is_img = att.mime_type and att.mime_type.startswith('image/') %}
           <button type="button"
                   class="btn btn-link btn-sm p-0 d-flex align-items-center gap-1 text-inverse text-opacity-60"
                   style="font-size:0.7rem;text-decoration:none;"
